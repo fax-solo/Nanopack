@@ -1,6 +1,6 @@
 {
   "name": "nanopack",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A desktop application that packs files, photos, and videos into a single portable archive.",
   "main": "dist/main/index.js",
   "scripts": {
