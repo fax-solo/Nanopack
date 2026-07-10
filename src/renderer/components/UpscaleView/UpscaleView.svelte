@@ -1,5 +1,6 @@
 <script lang="ts">
-  import CompactionReadout from '../CompactionReadout.svelte'
+  import ProgressPanel from '../ProgressPanel.svelte'
+  import ResultCard from '../ResultCard.svelte'
 
   let { mode, userId, engine, preset }: { mode: 'quick' | 'deep'; userId?: number; engine?: string; preset?: string } = $props()
 
@@ -12,7 +13,7 @@
   let noGpuWarning = $state(false)
   let result: { success: boolean; path?: string; message?: string } | null = $state(null)
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
-  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0 })
+  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0, currentFile: '' })
 
   const presets = [
     { id: '480p-1080p', label: '480p → 1080p', desc: 'SD to HD, good uplift' },
@@ -20,151 +21,119 @@
     { id: '720p-4K', label: '720p → 4K', desc: 'Large jump, moderate quality' },
     { id: '1080p-4K', label: '1080p → 4K', desc: 'HD to UHD, best for high quality source' },
   ]
-
   const engines = [
-    { id: 'realesrgan', name: 'Real-ESRGAN', desc: 'Best for live-action and photorealistic footage (default)', icon: '🎬' },
+    { id: 'realesrgan', name: 'Real-ESRGAN', desc: 'Best for live-action and photorealistic footage', icon: '🎬' },
     { id: 'anime4k', name: 'Anime4K', desc: 'Fastest option, ideal for 2D animation and casual upscaling', icon: '⚡' },
   ]
-
-  const aggressivePresets = ['480p-4K', '480p-1080p']  // presets with large pixel jumps
-
+  const aggressivePresets = ['480p-4K', '480p-1080p']
   let isAggressive = $derived(aggressivePresets.includes(selectedPreset))
 
   async function selectVideo() {
     const p = await window.nanopack.openFileDialog()
-    if (p) {
-      inputPath = p
-      outputPath = ''
-      result = null
-    }
+    if (p) { inputPath = p; outputPath = ''; result = null }
   }
-
   async function selectOutput() {
     const p = await window.nanopack.saveNpkDialog()
     if (p) outputPath = p
   }
-
   async function detectGpu() {
     const info = await window.nanopack.detectGpu()
     gpu = info
     noGpuWarning = !info || !info.vulkanSupported || info.vramGB < 4
   }
-
   async function runUpscale() {
     if (!inputPath) return
     if (noGpuWarning) return
     const outPath = outputPath || inputPath.replace(/\.[^.]+$/, '') + '_upscaled.mp4'
-    working = true
-    result = null
-    logs = []
-
+    working = true; result = null; logs = []
     const unsub = window.nanopack.onProgress((data) => {
       progress = data
       logs = [...logs, { text: data.stage + (data.currentFile ? ` — ${data.currentFile}` : ''), type: 'info' }]
     })
-
     const r = await window.nanopack.upscale(inputPath, outPath, selectedEngine, selectedPreset, userId)
     unsub()
-    result = r
-    working = false
+    result = r; working = false
   }
-
-  function reset() {
-    inputPath = ''
-    outputPath = ''
-    result = null
-    logs = []
-  }
+  function reset() { inputPath = ''; outputPath = ''; result = null; logs = [] }
 </script>
 
-<div class="card">
-  <div class="card-title">Upscale</div>
-  <div class="card-desc">
+<div class="svc-view">
+  <div class="svc-title">Upscale</div>
+  <div class="svc-desc">
     AI-powered video upscaling. Select a video, an upscaling engine, and a resolution target.
   </div>
 
-  <div class="flex-col gap-12">
-    <div class="path-input" onclick={selectVideo}>
-      <span class="path-text">{inputPath || 'Choose a video file...'}</span>
-      <span class="mono" style="color: var(--accent); font-size: 11px;">Browse</span>
+  <div class="input-stack">
+    <div class="path-row" onclick={selectVideo}>
+      <span class="path-row-icon">🎬</span>
+      <span class="path-row-text">{inputPath || 'Choose a video file...'}</span>
+      <span class="path-row-btn">Browse</span>
     </div>
-
-    {#if inputPath && !working}
-      <div>
-        <button class="btn btn-secondary" onclick={detectGpu}>
-          {gpu ? 'Re-detect GPU' : 'Detect GPU'}
-        </button>
-        {#if gpu}
-          <span class="mono" style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">
-            {gpu.name} · {gpu.vramGB} GB
-          </span>
-        {/if}
+    {#if inputPath}
+      <div class="path-row" onclick={selectOutput}>
+        <span class="path-row-icon">💾</span>
+        <span class="path-row-text">{outputPath || inputPath.replace(/\.[^.]+$/, '') + '_upscaled.mp4'}</span>
+        <span class="path-row-btn">Save As</span>
       </div>
     {/if}
   </div>
 
+  {#if inputPath && !working}
+    <div class="action-bar">
+      <button class="btn btn-secondary" onclick={detectGpu}>
+        {gpu ? '🔄 Re-detect GPU' : '🖥️ Detect GPU'}
+      </button>
+      {#if gpu}
+        <span class="gpu-info">{gpu.name} · {gpu.vramGB} GB</span>
+      {/if}
+    </div>
+  {/if}
+
   {#if noGpuWarning}
-    <div class="warning-banner" style="margin-top: 12px;">
-      <span class="icon">⚠</span>
-      <div>
-        No compatible GPU detected with 4GB+ VRAM and Vulkan support. CPU upscaling will be very slow (1–2 fps). A 90-minute video could take most of a day.
-      </div>
+    <div class="warn-banner">
+      <span>⚠</span>
+      <span>No compatible GPU (4GB+ VRAM, Vulkan). CPU upscaling will be very slow — a 90-minute video could take most of a day.</span>
     </div>
   {/if}
 
   {#if inputPath}
-    <div style="margin-top: 20px;">
-      <div style="font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 12px;">
-        Upscaling Engine
-      </div>
-      <div class="flex-col gap-8">
-        {#each engines as engine}
-          <div
-            class="engine-card"
-            class:selected={selectedEngine === engine.id}
-            onclick={() => selectedEngine = engine.id}
-          >
-            <div class="name">{engine.icon} {engine.name}</div>
-            <div class="desc">{engine.desc}</div>
-          </div>
+    <div class="section">
+      <div class="section-title">Engine</div>
+      <div class="radio-stack">
+        {#each engines as e}
+          <label class="radio-row" class:checked={selectedEngine === e.id}>
+            <input type="radio" name="engine" bind:group={selectedEngine} value={e.id} />
+            <span class="radio-name">{e.icon} {e.name}</span>
+            <span class="radio-desc">{e.desc}</span>
+          </label>
         {/each}
       </div>
     </div>
 
-    <div style="margin-top: 20px;">
-      <div style="font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 12px;">
-        Resolution Preset
-      </div>
-      <div class="flex-col gap-8">
-        {#each presets as preset}
-          <label class="flex-row" style="cursor: pointer; padding: 8px 12px; background: var(--surface); border-radius: var(--radius-md); border: 1px solid {selectedPreset === preset.id ? 'var(--accent)' : 'var(--border)'};">
-            <input type="radio" name="preset" value={preset.id} bind:group={selectedPreset} style="accent-color: var(--accent);" />
-            <div>
-              <div style="font-size: 13px; font-weight: 500; color: var(--text);">{preset.label}</div>
-              <div class="text-muted" style="font-size: 12px;">{preset.desc}</div>
-            </div>
+    <div class="section">
+      <div class="section-title">Resolution</div>
+      <div class="radio-stack">
+        {#each presets as p}
+          <label class="radio-row" class:checked={selectedPreset === p.id}>
+            <input type="radio" name="preset" bind:group={selectedPreset} value={p.id} />
+            <span class="radio-name">{p.label}</span>
+            <span class="radio-desc">{p.desc}</span>
           </label>
         {/each}
       </div>
     </div>
 
     {#if isAggressive}
-      <div class="warning-banner" style="margin-top: 12px;">
-        <span class="icon">⚠</span>
-        <div>
-          This is an aggressive upscale jump. Quality may be noticeably degraded. Consider a smaller step for better results.
-        </div>
+      <div class="warn-banner">
+        <span>⚠</span>
+        <span>This is an aggressive jump. Quality may be degraded. Consider a smaller step.</span>
       </div>
     {/if}
 
     {#if !result && !working}
-      <div class="flex-row gap-12" style="margin-top: 20px;">
-        <button
-          class="btn {noGpuWarning ? 'btn-warning' : 'btn-primary'}"
-          onclick={runUpscale}
-          disabled={working || !inputPath}
-        >
-          {noGpuWarning ? 'Upscale anyway (very slow)' : 'Start Upscale'}
+      <div class="action-bar">
+        <button class="btn {noGpuWarning ? 'btn-warning' : 'btn-primary'}" onclick={runUpscale} disabled={working || !inputPath}>
+          {noGpuWarning ? '⚠ Upscale anyway (very slow)' : '🚀 Start Upscale'}
         </button>
         <button class="btn btn-secondary" onclick={reset}>Cancel</button>
       </div>
@@ -172,36 +141,51 @@
   {/if}
 
   {#if working}
-    <div style="margin-top: 16px;">
-      <div class="progress-status">
-        <span class="stage mono">{progress.stage}</span>
-        <span class="mono">{Math.round(progress.percent)}%</span>
-      </div>
-      <div class="progress-bar" style="margin-top: 8px;">
-        <div class="fill" style="width: {progress.percent}%"></div>
-      </div>
-    </div>
+    <ProgressPanel {...progress} />
   {/if}
 
   {#if logs.length > 0}
-    <div class="progress-log" style="margin-top: 12px;">
+    <div class="log-box">
       {#each logs as log}
-        <div class="entry {log.type}">{log.text}</div>
+        <div class="log-line {log.type}">{log.text}</div>
       {/each}
     </div>
   {/if}
 
   {#if result}
-    <div style="margin-top: 16px; padding: 12px; border-radius: var(--radius-md); background: var(--bg); border: 1px solid {result.success ? 'var(--accent)' : 'var(--danger)'};">
-      {#if result.success}
-        <div style="color: var(--accent); font-weight: 600;">Upscale complete</div>
-        <div class="mono" style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-          {result.path}
-        </div>
-      {:else}
-        <div style="color: var(--danger); font-weight: 600;">Upscale failed</div>
-        <div class="mono" style="font-size: 12px; color: var(--text-muted);">{result.message}</div>
-      {/if}
-    </div>
+    <ResultCard
+      success={result.success}
+        title={result.success ? 'Upscale complete' : 'Upscale failed'}
+        message={result.success ? undefined : result.message}
+        path={result.path}
+    />
   {/if}
 </div>
+
+<style>
+  .svc-view { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; max-width: 800px; }
+  .svc-title { font-size: 20px; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
+  .svc-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+  .input-stack { display: flex; flex-direction: column; gap: 8px; }
+  .path-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); }
+  .path-row:hover { border-color: var(--accent); }
+  .path-row-icon { font-size: 16px; flex-shrink: 0; }
+  .path-row-text { flex: 1; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .path-row-btn { font-size: 11px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+  .action-bar { display: flex; gap: 10px; align-items: center; }
+  .gpu-info { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
+  .warn-banner { display: flex; gap: 10px; padding: 12px 14px; background: rgba(232, 163, 61, 0.08); border: 1px solid rgba(232, 163, 61, 0.2); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+  .section { display: flex; flex-direction: column; gap: 8px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .radio-stack { display: flex; flex-direction: column; gap: 6px; }
+  .radio-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); }
+  .radio-row:hover { border-color: var(--accent); }
+  .radio-row.checked { border-color: var(--accent); background: rgba(99,182,130,0.04); }
+  .radio-row input { accent-color: var(--accent); flex-shrink: 0; }
+  .radio-name { font-size: 13px; font-weight: 600; color: var(--text); min-width: 140px; }
+  .radio-desc { font-size: 12px; color: var(--text-muted); }
+  .log-box { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; background: var(--bg); border-radius: var(--radius-md); padding: 10px 14px; border: 1px solid var(--border); }
+  .log-line { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); padding: 2px 0; }
+  .log-line.done { color: var(--accent); }
+  .log-line.error { color: var(--danger); }
+</style>

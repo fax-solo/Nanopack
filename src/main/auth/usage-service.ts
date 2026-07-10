@@ -26,9 +26,17 @@ export interface DashboardStats {
   totalInputSize: number
   totalOutputSize: number
   usesByService: { service: string; count: number }[]
-  recentActivity: UsageLog[]
+  recentActivity: (UsageLog & { username: string })[]
   usersByDay: { day: string; count: number }[]
   usesByDay: { day: string; count: number }[]
+}
+
+function dbGet<T>(sql: string, ...params: unknown[]): T {
+  return getDb().prepare(sql).get(...params) as T
+}
+
+function dbAll<T>(sql: string, ...params: unknown[]): T[] {
+  return getDb().prepare(sql).all(...params) as T[]
 }
 
 export function logUsage(
@@ -40,16 +48,14 @@ export function logUsage(
   filesCount: number,
   durationMs: number
 ): void {
-  const db = getDb()
-  db.prepare(`
+  getDb().prepare(`
     INSERT INTO usage_log (user_id, service, mode, input_size, output_size, files_count, duration_ms, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `).run(userId, service, mode, inputSize, outputSize, filesCount, durationMs)
 }
 
 export function logEvent(userId: number, eventType: string, metadata?: string): void {
-  const db = getDb()
-  db.prepare(`
+  getDb().prepare(`
     INSERT INTO app_events (user_id, event_type, metadata, created_at)
     VALUES (?, ?, ?, datetime('now'))
   `).run(userId, eventType, metadata || null)
@@ -58,68 +64,43 @@ export function logEvent(userId: number, eventType: string, metadata?: string): 
 export function getDashboardStats(): DashboardStats {
   const db = getDb()
 
-  const totalUsers = (db.prepare('SELECT COUNT(*) as c FROM users WHERE is_guest = 0').get() as { c: number }).c
-  const activeUsersToday = (db.prepare(`
-    SELECT COUNT(DISTINCT user_id) as c FROM usage_log
-    WHERE created_at >= datetime('now', '-1 day')
-  `).get() as { c: number }).c
-  const activeUsersThisWeek = (db.prepare(`
-    SELECT COUNT(DISTINCT user_id) as c FROM usage_log
-    WHERE created_at >= datetime('now', '-7 days')
-  `).get() as { c: number }).c
-  const activeUsersThisMonth = (db.prepare(`
-    SELECT COUNT(DISTINCT user_id) as c FROM usage_log
-    WHERE created_at >= datetime('now', '-30 days')
-  `).get() as { c: number }).c
+  const totalUsers = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_guest = 0').c
+  const activeUsersToday = dbGet<{ c: number }>('SELECT COUNT(DISTINCT user_id) as c FROM usage_log WHERE created_at >= datetime(\'now\', \'-1 day\')').c
+  const activeUsersThisWeek = dbGet<{ c: number }>('SELECT COUNT(DISTINCT user_id) as c FROM usage_log WHERE created_at >= datetime(\'now\', \'-7 days\')').c
+  const activeUsersThisMonth = dbGet<{ c: number }>('SELECT COUNT(DISTINCT user_id) as c FROM usage_log WHERE created_at >= datetime(\'now\', \'-30 days\')').c
 
-  const newUsersThisDay = (db.prepare(`
-    SELECT COUNT(*) as c FROM users
-    WHERE created_at >= datetime('now', '-1 day') AND is_guest = 0
-  `).get() as { c: number }).c
-  const newUsersThisMonth = (db.prepare(`
-    SELECT COUNT(*) as c FROM users
-    WHERE created_at >= datetime('now', '-30 days') AND is_guest = 0
-  `).get() as { c: number }).c
+  const newUsersThisDay = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE created_at >= datetime(\'now\', \'-1 day\') AND is_guest = 0').c
+  const newUsersThisMonth = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE created_at >= datetime(\'now\', \'-30 days\') AND is_guest = 0').c
 
-  const totalUsesToday = (db.prepare(`
-    SELECT COUNT(*) as c FROM usage_log
-    WHERE created_at >= datetime('now', '-1 day')
-  `).get() as { c: number }).c
-  const totalUsesThisMonth = (db.prepare(`
-    SELECT COUNT(*) as c FROM usage_log
-    WHERE created_at >= datetime('now', '-30 days')
-  `).get() as { c: number }).c
-  const totalUsesThisYear = (db.prepare(`
-    SELECT COUNT(*) as c FROM usage_log
-    WHERE created_at >= datetime('now', '-365 days')
-  `).get() as { c: number }).c
-  const totalUsesAllTime = (db.prepare('SELECT COUNT(*) as c FROM usage_log').get() as { c: number }).c
+  const totalUsesToday = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM usage_log WHERE created_at >= datetime(\'now\', \'-1 day\')').c
+  const totalUsesThisMonth = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM usage_log WHERE created_at >= datetime(\'now\', \'-30 days\')').c
+  const totalUsesThisYear = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM usage_log WHERE created_at >= datetime(\'now\', \'-365 days\')').c
+  const totalUsesAllTime = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM usage_log').c
 
-  const totalInputSize = (db.prepare('SELECT COALESCE(SUM(input_size), 0) as s FROM usage_log').get() as { s: number }).s
-  const totalOutputSize = (db.prepare('SELECT COALESCE(SUM(output_size), 0) as s FROM usage_log').get() as { s: number }).s
+  const totalInputSize = dbGet<{ s: number }>('SELECT COALESCE(SUM(input_size), 0) as s FROM usage_log').s
+  const totalOutputSize = dbGet<{ s: number }>('SELECT COALESCE(SUM(output_size), 0) as s FROM usage_log').s
 
-  const usesByService = db.prepare(`
-    SELECT service, COUNT(*) as count FROM usage_log
-    GROUP BY service ORDER BY count DESC
-  `).all() as { service: string; count: number }[]
+  const usesByService = dbAll<{ service: string; count: number }>(
+    'SELECT service, COUNT(*) as count FROM usage_log GROUP BY service ORDER BY count DESC'
+  )
 
-  const recentActivity = db.prepare(`
-    SELECT ul.*, u.username FROM usage_log ul
-    JOIN users u ON u.id = ul.user_id
-    ORDER BY ul.created_at DESC LIMIT 20
-  `).all() as (UsageLog & { username: string })[]
+  const recentActivity = dbAll<UsageLog & { username: string }>(
+    `SELECT ul.*, u.username FROM usage_log ul
+     JOIN users u ON u.id = ul.user_id
+     ORDER BY ul.created_at DESC LIMIT 20`
+  )
 
-  const usersByDay = db.prepare(`
-    SELECT date(created_at) as day, COUNT(*) as count FROM users
-    WHERE created_at >= datetime('now', '-30 days') AND is_guest = 0
-    GROUP BY day ORDER BY day
-  `).all() as { day: string; count: number }[]
+  const usersByDay = dbAll<{ day: string; count: number }>(
+    `SELECT date(created_at) as day, COUNT(*) as count FROM users
+     WHERE created_at >= datetime('now', '-30 days') AND is_guest = 0
+     GROUP BY day ORDER BY day`
+  )
 
-  const usesByDay = db.prepare(`
-    SELECT date(created_at) as day, COUNT(*) as count FROM usage_log
-    WHERE created_at >= datetime('now', '-30 days')
-    GROUP BY day ORDER BY day
-  `).all() as { day: string; count: number }[]
+  const usesByDay = dbAll<{ day: string; count: number }>(
+    `SELECT date(created_at) as day, COUNT(*) as count FROM usage_log
+     WHERE created_at >= datetime('now', '-30 days')
+     GROUP BY day ORDER BY day`
+  )
 
   return {
     totalUsers, activeUsersToday, activeUsersThisWeek, activeUsersThisMonth,
@@ -131,13 +112,12 @@ export function getDashboardStats(): DashboardStats {
 }
 
 export function getUserStats(userId: number): { totalUses: number; totalInput: number; totalOutput: number; usesByService: { service: string; count: number }[] } {
-  const db = getDb()
-  const totalUses = (db.prepare('SELECT COUNT(*) as c FROM usage_log WHERE user_id = ?').get(userId) as { c: number }).c
-  const totalInput = (db.prepare('SELECT COALESCE(SUM(input_size), 0) as s FROM usage_log WHERE user_id = ?').get(userId) as { s: number }).s
-  const totalOutput = (db.prepare('SELECT COALESCE(SUM(output_size), 0) as s FROM usage_log WHERE user_id = ?').get(userId) as { s: number }).s
-  const usesByService = db.prepare(`
-    SELECT service, COUNT(*) as count FROM usage_log
-    WHERE user_id = ? GROUP BY service ORDER BY count DESC
-  `).all(userId) as { service: string; count: number }[]
+  const totalUses = dbGet<{ c: number }>('SELECT COUNT(*) as c FROM usage_log WHERE user_id = ?', userId).c
+  const totalInput = dbGet<{ s: number }>('SELECT COALESCE(SUM(input_size), 0) as s FROM usage_log WHERE user_id = ?', userId).s
+  const totalOutput = dbGet<{ s: number }>('SELECT COALESCE(SUM(output_size), 0) as s FROM usage_log WHERE user_id = ?', userId).s
+  const usesByService = dbAll<{ service: string; count: number }>(
+    'SELECT service, COUNT(*) as count FROM usage_log WHERE user_id = ? GROUP BY service ORDER BY count DESC',
+    userId
+  )
   return { totalUses, totalInput, totalOutput, usesByService }
 }

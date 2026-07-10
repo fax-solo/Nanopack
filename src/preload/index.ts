@@ -70,7 +70,21 @@ export interface DashboardStats {
   usesByDay: { day: string; count: number }[]
 }
 
+export interface AppSettings {
+  mode: 'quick' | 'deep'
+  windowBounds: { width: number; height: number }
+  theme: 'dark' | 'light' | 'system'
+  defaultOutputDir: string
+  confirmBeforeRun: boolean
+  maxThreads: number
+}
+
 const api = {
+  // Settings
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:getAll'),
+  setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]): Promise<void> =>
+    ipcRenderer.invoke('settings:set', key, value),
+
   getMode: (): Promise<'quick' | 'deep'> => ipcRenderer.invoke('get-mode'),
   setMode: (mode: 'quick' | 'deep'): Promise<'quick' | 'deep'> => ipcRenderer.invoke('set-mode', mode),
 

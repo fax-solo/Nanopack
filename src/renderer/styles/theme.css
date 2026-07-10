@@ -1,0 +1,18 @@
+/* ── Light theme ─────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg: #F5F6F8;
+  --surface: #FFFFFF;
+  --surface-raised: #EDEEF0;
+  --accent: #1A9E8F;
+  --accent-dim: #2A9A8F;
+  --warning: #D4942E;
+  --danger: #C94D3A;
+  --text: #1A1D23;
+  --text-muted: #6B727D;
+  --border: #D6D9DE;
+}
+
+[data-theme="light"] .stat-value,
+[data-theme="light"] .mono {
+  color: var(--text);
+}

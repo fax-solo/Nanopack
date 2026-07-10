@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fade, slide } from 'svelte/transition'
   import AuthView from './components/AuthView/AuthView.svelte'
   import ServiceSelect from './components/ServiceSelect/ServiceSelect.svelte'
   import Sidebar from './components/Sidebar.svelte'
@@ -7,8 +8,11 @@
   import RepackView from './components/RepackView/RepackView.svelte'
   import UpscaleView from './components/UpscaleView/UpscaleView.svelte'
   import AdminView from './components/AdminView/AdminView.svelte'
+  import SettingsView from './components/SettingsView/SettingsView.svelte'
+  import Toast from './components/Toast.svelte'
+  import { showToast } from './lib/toast.svelte'
 
-  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin'
+  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin' | 'settings'
 
   let user: { id: number; username: string; display_name: string; is_admin: number; is_guest: number } | null = $state(null)
   let token: string | null = $state(null)
@@ -17,11 +21,23 @@
   let activeEngine: string | undefined = $state(undefined)
   let activePreset: string | undefined = $state(undefined)
 
+  // Expose toast globally for child components
+  ;(window as any).__toast = showToast
+
+  async function applyTheme(theme: string) {
+    const resolved = theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+      : theme
+    document.documentElement.setAttribute('data-theme', resolved === 'light' ? 'light' : '')
+  }
+
   async function handleAuth(event: CustomEvent) {
     const result = event.detail
     user = result.user
     token = result.token
     activeService = 'home'
+    const settings = await window.nanopack.getSettings()
+    applyTheme(settings.theme)
   }
 
   async function handleLogout() {
@@ -52,6 +68,8 @@
   }
 </script>
 
+<Toast />
+
 {#if !user}
   <AuthView on:auth={handleAuth} />
 {:else}
@@ -66,18 +84,24 @@
   />
 
   <div class="workspace">
-    {#if activeService === 'home'}
-      <ServiceSelect on:navigate={handleNavigate} />
-    {:else if activeService === 'pack'}
-      <PackView mode={activeMode} userId={user.id} />
-    {:else if activeService === 'unpack'}
-      <UnpackView userId={user.id} />
-    {:else if activeService === 'repack'}
-      <RepackView mode={activeMode} userId={user.id} />
-    {:else if activeService === 'upscale'}
-      <UpscaleView mode={activeMode} engine={activeEngine} preset={activePreset} userId={user.id} />
-    {:else if activeService === 'admin'}
-      <AdminView />
-    {/if}
+    {#key activeService}
+      <div transition:fade={{ duration: 150 }}>
+        {#if activeService === 'home'}
+          <ServiceSelect on:navigate={handleNavigate} />
+        {:else if activeService === 'pack'}
+          <PackView mode={activeMode} userId={user.id} />
+        {:else if activeService === 'unpack'}
+          <UnpackView userId={user.id} />
+        {:else if activeService === 'repack'}
+          <RepackView mode={activeMode} userId={user.id} />
+        {:else if activeService === 'upscale'}
+          <UpscaleView mode={activeMode} engine={activeEngine} preset={activePreset} userId={user.id} />
+        {:else if activeService === 'admin'}
+          <AdminView />
+        {:else if activeService === 'settings'}
+          <SettingsView on:logout={handleLogout} />
+        {/if}
+      </div>
+    {/key}
   </div>
 {/if}

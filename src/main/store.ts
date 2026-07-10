@@ -2,14 +2,22 @@ import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
 
-interface StoreData {
+export interface StoreData {
   mode: 'quick' | 'deep'
   windowBounds: { width: number; height: number }
+  theme: 'dark' | 'light' | 'system'
+  defaultOutputDir: string
+  confirmBeforeRun: boolean
+  maxThreads: number
 }
 
 const DEFAULTS: StoreData = {
   mode: 'quick',
   windowBounds: { width: 1200, height: 800 },
+  theme: 'dark',
+  defaultOutputDir: '',
+  confirmBeforeRun: true,
+  maxThreads: 0,
 }
 
 function getPath(): string {
@@ -39,11 +47,15 @@ export function initStore() {
   Object.assign(cache, data)
 }
 
-export function get<T = unknown>(key: string): T {
-  return (cache as any)[key] as T
+export function get<K extends keyof StoreData>(key: K): StoreData[K] {
+  return cache[key]
 }
 
-export function set(key: string, value: unknown): void {
-  ;(cache as any)[key] = value
+export function set<K extends keyof StoreData>(key: K, value: StoreData[K]): void {
+  cache[key] = value
   write(cache)
+}
+
+export function getAll(): StoreData {
+  return { ...cache }
 }
