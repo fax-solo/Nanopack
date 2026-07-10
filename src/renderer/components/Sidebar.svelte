@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
 
-  type Service = 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin'
+  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin'
 
   let { activeService, mode, isAdmin = false, userName = '' }: {
     activeService: Service
@@ -13,6 +13,7 @@
   const dispatch = createEventDispatcher()
 
   const services: { id: Service; label: string; icon: string; desc: string; adminOnly?: boolean }[] = [
+    { id: 'home', label: 'Home', icon: '🏠', desc: 'Choose a service' },
     { id: 'pack', label: 'Pack', icon: '📦', desc: 'Pack files into an archive' },
     { id: 'unpack', label: 'Unpack', icon: '📂', desc: 'Extract or mount an archive' },
     { id: 'repack', label: 'Repack', icon: '🔄', desc: 'Update an existing archive' },
@@ -67,7 +68,7 @@
   </nav>
 
   <div class="mode-toggle-area">
-    <div class="mode-label">Mode</div>
+    <div class="mode-label">Default Mode</div>
     <div class="mode-buttons">
       <button class="mode-btn" class:active={mode === 'quick'} onclick={() => setMode('quick')}>
         Quick

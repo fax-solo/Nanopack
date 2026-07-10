@@ -6,10 +6,11 @@ import { execSync } from 'child_process'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const PLATFORM = process.platform
+const RAW_PLATFORM = process.platform
+const PLATFORM = RAW_PLATFORM === 'win32' ? 'win' : RAW_PLATFORM === 'darwin' ? 'mac' : RAW_PLATFORM
 const VENDOR_DIR = path.join(__dirname, '..', 'vendor', PLATFORM)
 const CACHE_DIR = path.join(__dirname, '..', 'vendor', '_cache')
-const EXT = PLATFORM === 'win32' ? '.exe' : ''
+const EXT = RAW_PLATFORM === 'win32' ? '.exe' : ''
 
 function log(m: string) { console.log(`  ${m}`) }
 

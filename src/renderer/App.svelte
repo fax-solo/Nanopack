@@ -1,5 +1,6 @@
 <script lang="ts">
   import AuthView from './components/AuthView/AuthView.svelte'
+  import ServiceSelect from './components/ServiceSelect/ServiceSelect.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import PackView from './components/PackView/PackView.svelte'
   import UnpackView from './components/UnpackView/UnpackView.svelte'
@@ -7,18 +8,20 @@
   import UpscaleView from './components/UpscaleView/UpscaleView.svelte'
   import AdminView from './components/AdminView/AdminView.svelte'
 
-  type Service = 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin'
+  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin'
 
   let user: { id: number; username: string; display_name: string; is_admin: number; is_guest: number } | null = $state(null)
   let token: string | null = $state(null)
-  let activeService: Service = $state('pack')
-  let mode: 'quick' | 'deep' = $state('quick')
+  let activeService: Service = $state('home')
+  let activeMode: 'quick' | 'deep' = $state('quick')
+  let activeEngine: string | undefined = $state(undefined)
+  let activePreset: string | undefined = $state(undefined)
 
   async function handleAuth(event: CustomEvent) {
     const result = event.detail
     user = result.user
     token = result.token
-    activeService = 'pack'
+    activeService = 'home'
   }
 
   async function handleLogout() {
@@ -27,12 +30,24 @@
     token = null
   }
 
-  async function handleServiceChange(service: Service) {
+  function handleNavigate(event: CustomEvent) {
+    const { service, mode, preset, engine } = event.detail
     activeService = service
+    if (mode) activeMode = mode
+    if (preset) activePreset = preset
+    if (engine) activeEngine = engine
+  }
+
+  function handleServiceChange(service: Service) {
+    activeService = service
+    if (service !== 'upscale') {
+      activeEngine = undefined
+      activePreset = undefined
+    }
   }
 
   async function handleModeChange(newMode: 'quick' | 'deep') {
-    mode = newMode
+    activeMode = newMode
     await window.nanopack.setMode(newMode)
   }
 </script>
@@ -42,7 +57,7 @@
 {:else}
   <Sidebar
     {activeService}
-    {mode}
+    mode={activeMode}
     isAdmin={user.is_admin === 1}
     userName={user.display_name || user.username}
     on:serviceChange={(e) => handleServiceChange(e.detail)}
@@ -51,14 +66,16 @@
   />
 
   <div class="workspace">
-    {#if activeService === 'pack'}
-      <PackView {mode} userId={user.id} />
+    {#if activeService === 'home'}
+      <ServiceSelect on:navigate={handleNavigate} />
+    {:else if activeService === 'pack'}
+      <PackView mode={activeMode} userId={user.id} />
     {:else if activeService === 'unpack'}
       <UnpackView userId={user.id} />
     {:else if activeService === 'repack'}
-      <RepackView {mode} userId={user.id} />
+      <RepackView mode={activeMode} userId={user.id} />
     {:else if activeService === 'upscale'}
-      <UpscaleView {mode} userId={user.id} />
+      <UpscaleView mode={activeMode} engine={activeEngine} preset={activePreset} userId={user.id} />
     {:else if activeService === 'admin'}
       <AdminView />
     {/if}

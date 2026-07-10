@@ -1,12 +1,12 @@
 <script lang="ts">
   import CompactionReadout from '../CompactionReadout.svelte'
 
-  let { mode, userId }: { mode: 'quick' | 'deep'; userId?: number } = $props()
+  let { mode, userId, engine, preset }: { mode: 'quick' | 'deep'; userId?: number; engine?: string; preset?: string } = $props()
 
   let inputPath = $state('')
   let outputPath = $state('')
-  let selectedEngine = $state('realesrgan')
-  let selectedPreset = $state('720p-1080p')
+  let selectedEngine = $state(engine || 'realesrgan')
+  let selectedPreset = $state(preset || '720p-1080p')
   let working = $state(false)
   let gpu: { name: string; vramGB: number; vulkanSupported: boolean; vendor: string } | null = $state(null)
   let noGpuWarning = $state(false)
