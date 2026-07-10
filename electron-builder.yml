@@ -21,13 +21,11 @@ win:
     - target: nsis
       arch:
         - x64
-  icon: resources/icon.png
+  icon: null
 
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  installerIcon: resources/icon.png
-  uninstallerIcon: resources/icon.png
 
 linux:
   target:
@@ -37,7 +35,6 @@ linux:
     - target: deb
       arch:
         - x64
-  icon: resources/icon.png
   category: Utility
 
 mac: null

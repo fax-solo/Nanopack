@@ -58,7 +58,10 @@ function findBin(dir: string, name: string): string | null {
 
 function trySystemBin(name: string): string | null {
   try {
-    const r = execSync(`which "${name}" 2>/dev/null || command -v "${name}" 2>/dev/null`, { encoding: 'utf-8' }).trim()
+    const cmd = RAW_PLATFORM === 'win32'
+      ? `where "${name}" 2>nul`
+      : `which "${name}" 2>/dev/null || command -v "${name}" 2>/dev/null`
+    const r = execSync(cmd, { encoding: 'utf-8' }).trim()
     return r || null
   } catch { return null }
 }
@@ -77,17 +80,24 @@ async function main() {
   } else {
     const t = path.join(VENDOR_DIR, 'zstd' + EXT)
     if (!fs.existsSync(t)) {
-      log('zstd — building from source...')
-      const src = path.join(CACHE_DIR, 'zstd-1.5.6.tar.gz')
-      download('https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz', src)
-      const bd = fs.mkdtempSync('npk-build-')
-      try {
-        execSync(`tar xzf "${src}" -C "${bd}" 2>&1`, { stdio: 'pipe' })
-        execSync(`make -j$(nproc) zstd -C "${bd}/zstd-1.5.6/programs" 2>&1`, { stdio: 'pipe', timeout: 120000 })
-        const built = path.join(bd, 'zstd-1.5.6/programs/zstd')
-        if (fs.existsSync(built)) { install('zstd', built); log('zstd — built from source') }
-        else log('WARNING: zstd build failed')
-      } finally { fs.rmSync(bd, { recursive: true, force: true }) }
+      if (RAW_PLATFORM === 'win32') {
+        log('zstd — downloading Windows binary...')
+        const src = path.join(CACHE_DIR, 'zstd-win64.zip')
+        download('https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-v1.5.6-win64.zip', src)
+        extractAndInstall(src, ['zstd.exe'])
+      } else {
+        log('zstd — building from source...')
+        const src = path.join(CACHE_DIR, 'zstd-1.5.6.tar.gz')
+        download('https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-1.5.6.tar.gz', src)
+        const bd = fs.mkdtempSync('npk-build-')
+        try {
+          execSync(`tar xzf "${src}" -C "${bd}" 2>&1`, { stdio: 'pipe' })
+          execSync(`make -j$(nproc) zstd -C "${bd}/zstd-1.5.6/programs" 2>&1`, { stdio: 'pipe', timeout: 120000 })
+          const built = path.join(bd, 'zstd-1.5.6/programs/zstd')
+          if (fs.existsSync(built)) { install('zstd', built); log('zstd — built from source') }
+          else log('WARNING: zstd build failed')
+        } finally { fs.rmSync(bd, { recursive: true, force: true }) }
+      }
     }
   }
 
@@ -103,18 +113,30 @@ async function main() {
       if (fs.existsSync(path.join(VENDOR_DIR, f + EXT))) { log(`${f} — present`); return }
     })
     if (!fs.existsSync(path.join(VENDOR_DIR, 'ffmpeg' + EXT))) {
-      const src = path.join(CACHE_DIR, 'ffmpeg-release-amd64-static.tar.xz')
-      download('https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz', src)
-      extractAndInstall(src, ['ffmpeg', 'ffprobe'])
+      if (RAW_PLATFORM === 'win32') {
+        const src = path.join(CACHE_DIR, 'ffmpeg-win64.zip')
+        download('https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip', src)
+        extractAndInstall(src, ['ffmpeg.exe', 'ffprobe.exe'])
+      } else {
+        const src = path.join(CACHE_DIR, 'ffmpeg-release-amd64-static.tar.xz')
+        download('https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz', src)
+        extractAndInstall(src, ['ffmpeg', 'ffprobe'])
+      }
     }
   }
 
   // ── OxiPNG ────────────────────────────────────────────────────
   const t = path.join(VENDOR_DIR, 'oxipng' + EXT)
   if (!fs.existsSync(t)) {
-    const src = path.join(CACHE_DIR, 'oxipng-x86_64-linux.tar.gz')
-    download('https://github.com/oxipng/oxipng/releases/download/v10.1.1/oxipng-10.1.1-x86_64-unknown-linux-musl.tar.gz', src)
-    extractAndInstall(src, ['oxipng'])
+    if (RAW_PLATFORM === 'win32') {
+      const src = path.join(CACHE_DIR, 'oxipng-win64.zip')
+      download('https://github.com/oxipng/oxipng/releases/download/v10.1.1/oxipng-10.1.1-x86_64-pc-windows-msvc.zip', src)
+      extractAndInstall(src, ['oxipng.exe'])
+    } else {
+      const src = path.join(CACHE_DIR, 'oxipng-x86_64-linux.tar.gz')
+      download('https://github.com/oxipng/oxipng/releases/download/v10.1.1/oxipng-10.1.1-x86_64-unknown-linux-musl.tar.gz', src)
+      extractAndInstall(src, ['oxipng'])
+    }
   } else { log('oxipng — present') }
 
   // ── Video2X (Linux AppImage, Windows .exe) ────────────────────
