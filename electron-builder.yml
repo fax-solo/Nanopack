@@ -1,0 +1,43 @@
+appId: com.nanopack.app
+productName: NanoPack
+copyright: Copyright © 2025
+
+directories:
+  buildResources: resources
+  output: release
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: vendor/${os}/
+    to: vendor/
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.png
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: resources/icon.png
+  uninstallerIcon: resources/icon.png
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  icon: resources/icon.png
+  category: Utility
+
+mac: null

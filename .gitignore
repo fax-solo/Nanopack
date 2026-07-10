@@ -1,0 +1,13 @@
+node_modules/
+dist/
+release/
+vendor/_cache/
+vendor/linux/
+vendor/win/
+*.npk
+*.db
+*.log
+.nanopack-data/
+npk-vendor-*/
+.DS_Store
+Thumbs.db
