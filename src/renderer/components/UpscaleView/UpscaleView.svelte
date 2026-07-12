@@ -12,6 +12,7 @@
   let gpu: { name: string; vramGB: number; vulkanSupported: boolean; vendor: string } | null = $state(null)
   let noGpuWarning = $state(false)
   let result: { success: boolean; path?: string; message?: string } | null = $state(null)
+  let downloadingModel = $state(false)
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
   let progress = $state({ stage: '', percent: 0, processed: 0, total: 0, currentFile: '' })
 
@@ -44,6 +45,27 @@
   async function runUpscale() {
     if (!inputPath) return
     if (noGpuWarning) return
+
+    if (selectedEngine === 'realesrgan') {
+      const { needed } = await window.nanopack.ensureModel()
+      if (needed) {
+        downloadingModel = true
+        logs = [...logs, { text: 'Downloading Real-ESRGAN model...', type: 'info' }]
+        await new Promise<void>((resolve) => {
+          const unsub = window.nanopack.onDownloadProgress((task) => {
+            if (task.id === 'realesrgan-model') {
+              progress = { stage: `Downloading model (${task.progress}%)`, percent: task.progress, processed: 0, total: 0, currentFile: '' }
+              if (task.status === 'completed' || task.status === 'error') {
+                unsub()
+                downloadingModel = false
+                resolve()
+              }
+            }
+          })
+        })
+      }
+    }
+
     const outPath = outputPath || inputPath.replace(/\.[^.]+$/, '') + '_upscaled.mp4'
     working = true; result = null; logs = []
     const unsub = window.nanopack.onProgress((data) => {
@@ -132,7 +154,7 @@
 
     {#if !result && !working}
       <div class="action-bar">
-        <button class="btn {noGpuWarning ? 'btn-warning' : 'btn-primary'}" onclick={runUpscale} disabled={working || !inputPath}>
+        <button class="btn {noGpuWarning ? 'btn-warning' : 'btn-primary'}" onclick={runUpscale} disabled={working || downloadingModel || !inputPath}>
           {noGpuWarning ? '⚠ Upscale anyway (very slow)' : '🚀 Start Upscale'}
         </button>
         <button class="btn btn-secondary" onclick={reset}>Cancel</button>

@@ -9,6 +9,7 @@
   import UpscaleView from './components/UpscaleView/UpscaleView.svelte'
   import AdminView from './components/AdminView/AdminView.svelte'
   import SettingsView from './components/SettingsView/SettingsView.svelte'
+  import DownloadBar from './components/DownloadBar.svelte'
   import Toast from './components/Toast.svelte'
   import { showToast } from './lib/toast.svelte'
 
@@ -84,6 +85,7 @@
   />
 
   <div class="workspace">
+    <DownloadBar />
     {#key activeService}
       <div transition:fade={{ duration: 150 }}>
         {#if activeService === 'home'}

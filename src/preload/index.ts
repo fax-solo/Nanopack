@@ -34,6 +34,16 @@ export interface GpuInfo {
   vendor: 'nvidia' | 'amd' | 'intel' | 'unknown'
 }
 
+export interface DownloadTask {
+  id: string
+  name: string
+  url: string
+  dest: string
+  progress: number
+  status: 'downloading' | 'completed' | 'cancelled' | 'error'
+  error?: string
+}
+
 export interface User {
   id: number
   username: string
@@ -118,6 +128,19 @@ const api = {
   upscale: (inputPath: string, outputPath: string, engine: string, preset: string, userId?: number): Promise<NpkResult> =>
     ipcRenderer.invoke('upscale', inputPath, outputPath, engine, preset, userId),
   detectGpu: (): Promise<GpuInfo | null> => ipcRenderer.invoke('detect-gpu'),
+
+  startDownload: (id: string, name: string, url: string, dest: string): Promise<DownloadTask> =>
+    ipcRenderer.invoke('download:start', id, name, url, dest),
+  cancelDownload: (id: string): Promise<boolean> => ipcRenderer.invoke('download:cancel', id),
+  getDownloads: (): Promise<DownloadTask[]> => ipcRenderer.invoke('download:list'),
+
+  ensureModel: (): Promise<{ needed: boolean; task?: DownloadTask }> => ipcRenderer.invoke('ensure-model'),
+
+  onDownloadProgress: (callback: (task: DownloadTask) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, task: DownloadTask) => callback(task)
+    ipcRenderer.on('download-progress', listener)
+    return () => ipcRenderer.removeListener('download-progress', listener)
+  },
 
   // Dashboard
   getDashboardStats: (token: string): Promise<DashboardStats> => ipcRenderer.invoke('dashboard:stats', token),

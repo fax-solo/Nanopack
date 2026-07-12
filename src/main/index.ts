@@ -9,6 +9,8 @@ import path from 'path'
 import { packFiles, estimatePack, unpackArchive, mountArchive, verifyArchive } from './services/pack-service'
 import { repackArchive } from './services/repack-service'
 import { upscaleVideo, detectGpu } from './services/upscale-service'
+import { startDownload, cancelDownload, setProgressCallback, getDownloads } from './services/download-service'
+import { modelExists, getModelDownloadInfo } from './utils/model-download'
 import { initStore, get as storeGet, set as storeSet, getAll as storeGetAll } from './store'
 import { initDatabase } from './database/schema'
 import { registerUser, loginUser, createGuestUser, validateSession, logoutSession, getAllUsers, getUserById } from './auth/auth-service'
@@ -95,6 +97,10 @@ app.whenReady().then(() => {
     initDatabase()
     createWindow()
     createTray()
+
+    setProgressCallback((task) => {
+      mainWindow?.webContents.send('download-progress', task)
+    })
   } catch (err) {
     console.error('Failed to initialize app:', err)
   }
@@ -204,6 +210,25 @@ ipcMain.handle('unmount', async (_event, mountPath: string) => {
 })
 
 ipcMain.handle('get-platform', () => process.platform)
+
+ipcMain.handle('download:start', async (_event, id: string, name: string, url: string, dest: string) => {
+  return startDownload(id, name, url, dest)
+})
+
+ipcMain.handle('download:cancel', async (_event, id: string) => {
+  return cancelDownload(id)
+})
+
+ipcMain.handle('download:list', async () => {
+  return getDownloads()
+})
+
+ipcMain.handle('ensure-model', async () => {
+  if (modelExists()) return { needed: false }
+  const { url, dest } = getModelDownloadInfo()
+  const task = await startDownload('realesrgan-model', 'Real-ESRGAN model', url, dest)
+  return { needed: true, task }
+})
 
 ipcMain.handle('verify', async (_event, npkPath: string) => {
   try { return await verifyArchive(npkPath, (stage, percent) => { sendProgress(stage, percent) }) }

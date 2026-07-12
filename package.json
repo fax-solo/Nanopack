@@ -12,8 +12,8 @@
     "start": "npm run build:all && electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "download-vendor": "ts-node scripts/download-vendor.ts",
-    "install-vendor": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"ESNext\",\"moduleResolution\":\"bundler\"}' ts-node scripts/install-all-vendor.ts"
+    "download-vendor": "tsx scripts/download-vendor.ts",
+    "install-vendor": "tsx scripts/install-all-vendor.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
@@ -25,6 +25,7 @@
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "ts-node": "^10.9.0",
+    "tsx": "^4.23.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   },
