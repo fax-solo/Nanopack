@@ -1,5 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } from 'electron'
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.nanopack.app')
+}
+
 let isQuitting = false
 import path from 'path'
 import { packFiles, estimatePack, unpackArchive, mountArchive, verifyArchive } from './services/pack-service'
@@ -19,7 +23,14 @@ function sendProgress(stage: string, percent: number, processed: number = 0, tot
 
 function createTray() {
   const iconSize = process.platform === 'win32' ? 32 : 22
-  const icon = nativeImage.createFromPath(path.join(__dirname, '../../resources/icon.png'))
+  const iconPath = path.join(__dirname, '../../resources/icon.png')
+  let icon: Electron.NativeImage
+  try {
+    icon = nativeImage.createFromPath(iconPath)
+    if (icon.isEmpty()) throw new Error('icon is empty')
+  } catch {
+    icon = nativeImage.createEmpty()
+  }
   tray = new Tray(icon.resize({ width: iconSize, height: iconSize }))
   tray.setToolTip('NanoPack')
 
@@ -79,10 +90,14 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  initStore()
-  initDatabase()
-  createWindow()
-  createTray()
+  try {
+    initStore()
+    initDatabase()
+    createWindow()
+    createTray()
+  } catch (err) {
+    console.error('Failed to initialize app:', err)
+  }
 })
 
 app.on('window-all-closed', () => {
@@ -183,8 +198,8 @@ ipcMain.handle('mount', async (_event, npkPath: string) => {
 })
 
 ipcMain.handle('unmount', async (_event, mountPath: string) => {
-  const { execSync } = await import('child_process')
-  try { execSync(`fusermount -u "${mountPath}" 2>/dev/null || true`) } catch {}
+  const { spawnSync } = await import('child_process')
+  try { spawnSync('fusermount', ['-u', mountPath], { stdio: 'pipe' }) } catch {}
 })
 
 ipcMain.handle('verify', async (_event, npkPath: string) => {
@@ -224,6 +239,24 @@ ipcMain.handle('detect-gpu', async () => {
 })
 
 // ── Dashboard ──────────────────────────────────────────────────────
-ipcMain.handle('dashboard:stats', () => getDashboardStats())
-ipcMain.handle('dashboard:userStats', (_event, userId: number) => getUserStats(userId))
-ipcMain.handle('dashboard:allUsers', () => getAllUsers())
+function requireAdmin(token: string): { success: false; error: string } | null {
+  const user = validateSession(token)
+  if (!user || !user.is_admin) return { success: false, error: 'Forbidden' }
+  return null
+}
+
+ipcMain.handle('dashboard:stats', async (_event, token: string) => {
+  const auth = requireAdmin(token)
+  if (auth) return auth
+  return getDashboardStats()
+})
+ipcMain.handle('dashboard:userStats', async (_event, token: string, userId: number) => {
+  const auth = requireAdmin(token)
+  if (auth) return auth
+  return getUserStats(userId)
+})
+ipcMain.handle('dashboard:allUsers', async (_event, token: string) => {
+  const auth = requireAdmin(token)
+  if (auth) return auth
+  return getAllUsers()
+})

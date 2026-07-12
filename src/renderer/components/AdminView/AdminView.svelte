@@ -2,6 +2,8 @@
   import Skeleton from '../Skeleton.svelte'
   import EmptyState from '../EmptyState.svelte'
 
+  let { token }: { token: string } = $props()
+
   let stats = $state<{
     totalUsers: number; activeUsersToday: number; activeUsersThisWeek: number; activeUsersThisMonth: number;
     newUsersThisDay: number; newUsersThisMonth: number;
@@ -18,8 +20,8 @@
 
   async function loadStats() {
     loading = true
-    stats = await window.nanopack.getDashboardStats()
-    users = await window.nanopack.getAllUsers()
+    stats = await window.nanopack.getDashboardStats(token) as any
+    users = await window.nanopack.getAllUsers(token) as any
     loading = false
   }
 

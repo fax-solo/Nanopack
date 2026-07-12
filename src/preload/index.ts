@@ -119,10 +119,10 @@ const api = {
   detectGpu: (): Promise<GpuInfo | null> => ipcRenderer.invoke('detect-gpu'),
 
   // Dashboard
-  getDashboardStats: (): Promise<DashboardStats> => ipcRenderer.invoke('dashboard:stats'),
-  getUserStats: (userId: number): Promise<{ totalUses: number; totalInput: number; totalOutput: number; usesByService: { service: string; count: number }[] }> =>
-    ipcRenderer.invoke('dashboard:userStats', userId),
-  getAllUsers: (): Promise<User[]> => ipcRenderer.invoke('dashboard:allUsers'),
+  getDashboardStats: (token: string): Promise<DashboardStats> => ipcRenderer.invoke('dashboard:stats', token),
+  getUserStats: (token: string, userId: number): Promise<{ totalUses: number; totalInput: number; totalOutput: number; usesByService: { service: string; count: number }[] }> =>
+    ipcRenderer.invoke('dashboard:userStats', token, userId),
+  getAllUsers: (token: string): Promise<User[]> => ipcRenderer.invoke('dashboard:allUsers', token),
 
   onProgress: (callback: (data: ProgressData) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: ProgressData) => callback(data)

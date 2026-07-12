@@ -91,20 +91,21 @@ export function initDatabase(): void {
 
   database.prepare('DELETE FROM sessions WHERE expires_at <= datetime(\'now\')').run()
 
-  // Remove old default admin user if still present
-  database.prepare('DELETE FROM users WHERE username = ? AND is_admin = 1').run('admin')
-
-  // Create or ensure the admin user exists with the correct credentials
-  const existingAdmin = database.prepare('SELECT id FROM users WHERE username = ?').get('***REMOVED***') as { id: number } | undefined
-  if (existingAdmin) {
-    const pw = hashPassword('***REMOVED***')
-    database.prepare('UPDATE users SET password_hash = ?, is_admin = 1 WHERE id = ?').run(pw, existingAdmin.id)
-  } else {
-    const pw = hashPassword('***REMOVED***')
+  const existingAdmin = database.prepare('SELECT id FROM users WHERE is_admin = 1').get() as { id: number } | undefined
+  if (!existingAdmin) {
+    const plaintext = crypto.randomBytes(16).toString('hex')
+    const pw = hashPassword(plaintext)
     database.prepare(`
       INSERT INTO users (username, password_hash, display_name, is_admin, created_at)
       VALUES (?, ?, ?, 1, datetime('now'))
-    `).run('***REMOVED***', pw, '***REMOVED***')
+    `).run('admin', pw, 'Administrator')
+
+    console.log('')
+    console.log('⚠️  ===== SAVE THIS PASSWORD =====')
+    console.log(`Admin username: admin`)
+    console.log(`Admin password: ${plaintext}`)
+    console.log('================================')
+    console.log('')
   }
 }
 

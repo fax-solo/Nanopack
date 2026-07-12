@@ -97,7 +97,7 @@
         {:else if activeService === 'upscale'}
           <UpscaleView mode={activeMode} engine={activeEngine} preset={activePreset} userId={user.id} />
         {:else if activeService === 'admin'}
-          <AdminView />
+          <AdminView {token} />
         {:else if activeService === 'settings'}
           <SettingsView on:logout={handleLogout} />
         {/if}

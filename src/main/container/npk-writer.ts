@@ -1,12 +1,27 @@
 import fs from 'fs'
 import path from 'path'
-import { execSync, spawn } from 'child_process'
+import { spawnSync, spawn } from 'child_process'
 import crypto from 'crypto'
 
 const MAGIC_QUICK = 0x4E504B01
 const MAGIC_DEEP = 0x4E504B02
 const HEADER_SIZE = 4096
 
+/* NPK header byte layout (v2, 112 bytes + 3984 padding = 4096):
+   Offset  Size  Field         Type
+       0     4   magic         UInt32BE
+       4     4   manifestOff   UInt32BE (always HEADER_SIZE)
+       8     8   manifestSize  BigUInt64BE
+      16     8   dataOffset    BigUInt64BE
+      24     8   dataSize      BigUInt64BE
+      32     2   flags         UInt16BE
+      34     1   mode          UInt8
+      35     1   (alignment)
+      36     4   fileCount     UInt32BE
+      40     8   originalSize  BigUInt64BE
+      48    64   dataHash      ASCII hex (SHA-256)
+     112  3984   padding
+*/
 export interface NpkHeader {
   magic: number
   manifestOffset: number
@@ -17,6 +32,7 @@ export interface NpkHeader {
   mode: number
   fileCount: number
   originalSize: number
+  dataHash: string
   padding: Buffer
 }
 
@@ -86,7 +102,7 @@ export async function writeNpk(
 
   const total = files.length
   const manifest: NpkManifest = {
-    version: 1,
+    version: 2,
     mode,
     createdAt: Date.now(),
     entries: [],
@@ -144,18 +160,17 @@ export async function writeNpk(
         '-o', dataPath,
         '-l', '6',
       ]
-      execSync(`"${dwarfs}" ${args.join(' ')}`, { stdio: 'pipe' })
+      const dwarfsResult = spawnSync(dwarfs, args, { stdio: 'pipe' })
+      if (dwarfsResult.status !== 0) throw new Error(`mkdwarfs failed: ${dwarfsResult.stderr.toString()}`)
     } else {
       dataPath = path.join(tempDir, 'data.zst')
       const zstd = getBinary('zstd')
-      const tempFileList = path.join(tempDir, 'files.txt')
-      const relFiles = files.map(f => path.relative(sourceDir, f))
-      fs.writeFileSync(tempFileList, relFiles.join('\n'))
-      execSync(`"${zstd}" -3 --rm -o "${dataPath}" -- "${tempFileList}"`, { stdio: 'pipe' })
-
       const tempTar = path.join(tempDir, 'data.tar')
-      execSync(`tar cf "${tempTar}" -C "${sourceDir}" .`, { stdio: 'pipe' })
-      execSync(`"${zstd}" -3 -o "${dataPath}" "${tempTar}"`, { stdio: 'pipe' })
+      const tarResult = spawnSync('tar', ['cf', tempTar, '-C', sourceDir, '.'], { stdio: 'pipe' })
+      if (tarResult.status !== 0) throw new Error(`tar failed: ${tarResult.stderr.toString()}`)
+      const zstdResult = spawnSync(zstd, ['-3', '-f', '-o', dataPath, tempTar], { stdio: 'pipe' })
+      if (zstdResult.status !== 0) throw new Error(`zstd compress failed: ${zstdResult.stderr.toString()}`)
+      try { fs.rmSync(tempTar, { force: true }) } catch {}
     }
 
     const dataStat = fs.statSync(dataPath)
@@ -169,31 +184,36 @@ export async function writeNpk(
 
   const manifestFinal = Buffer.from(JSON.stringify(manifest))
 
+  const dataOffset = HEADER_SIZE + manifestFinal.length
   const header: NpkHeader = {
     magic: mode === 'deep' ? MAGIC_DEEP : MAGIC_QUICK,
     manifestOffset: HEADER_SIZE,
     manifestSize: manifestFinal.length,
-    dataOffset: HEADER_SIZE + manifestFinal.length,
+    dataOffset,
     dataSize,
     flags: 0,
     mode: mode === 'deep' ? 1 : 0,
     fileCount: files.length,
     originalSize,
-    padding: Buffer.alloc(HEADER_SIZE - 44),
+    dataHash: '',
+    padding: Buffer.alloc(HEADER_SIZE - 112),
   }
 
   const headerBuf = Buffer.alloc(HEADER_SIZE)
   headerBuf.writeUInt32BE(header.magic, 0)
-  headerBuf.writeUInt32BE(HEADER_SIZE, 4)  // manifestOffset
-  headerBuf.writeUInt32BE(manifestFinal.length, 8)
-  headerBuf.writeUInt32BE(HEADER_SIZE + manifestFinal.length, 12)
-  headerBuf.writeUInt32BE(dataSize, 16)
-  headerBuf.writeUInt16BE(header.flags, 20)
-  headerBuf.writeUInt8(header.mode, 22)
-  headerBuf.writeUInt32BE(header.fileCount, 24)
-  headerBuf.writeBigUInt64BE(BigInt(originalSize), 28)
+  headerBuf.writeUInt32BE(HEADER_SIZE, 4)
+  headerBuf.writeBigUInt64BE(BigInt(manifestFinal.length), 8)
+  headerBuf.writeBigUInt64BE(BigInt(dataOffset), 16)
+  headerBuf.writeBigUInt64BE(BigInt(dataSize), 24)
+  headerBuf.writeUInt16BE(header.flags, 32)
+  headerBuf.writeUInt8(header.mode, 34)
+  headerBuf.writeUInt32BE(header.fileCount, 36)
+  headerBuf.writeBigUInt64BE(BigInt(originalSize), 40)
 
   const dataBuf = fs.readFileSync(dataPath)
+  const dataHash = crypto.createHash('sha256').update(dataBuf).digest('hex')
+
+  headerBuf.write(dataHash, 48, 64, 'ascii')
 
   const outFile = fs.createWriteStream(outputPath)
   outFile.write(headerBuf)

@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { writeNpk } from '../container/npk-writer'
 
 export interface EstimateResult {
@@ -50,9 +51,6 @@ export async function estimatePack(
 
   const sample = sampleFiles(Math.min(files.length, 50))
   const sampleSize = sample.reduce((sum, f) => sum + fs.statSync(f).size, 0)
-
-  const quickRatio = 0.65 + Math.random() * 0.15
-  const deepRatio = 0.35 + Math.random() * 0.15
 
   const totalRatioQuick = sampleSize > 0 ? sample.reduce((sum, f) => {
     const ext = f.split('.').pop()?.toLowerCase()
@@ -112,11 +110,11 @@ export async function mountArchive(
 
   const { getBinary } = await import('../container/npk-writer')
   const dwarfs = getBinary('dwarfs')
-  const mountPoint = `/tmp/nanopack-mount-${path.basename(npkPath).replace(/\.npk$/, '')}`
-  fs.mkdirSync(mountPoint, { recursive: true })
+  const mountPoint = fs.mkdtempSync(path.join(os.tmpdir(), 'nanopack-mount-'))
 
-  const { execSync } = await import('child_process')
-  execSync(`"${dwarfs}" "${npkPath}" "${mountPoint}" -o allow_other=false,ro`, { stdio: 'pipe', timeout: 10000 })
+  const { spawnSync } = await import('child_process')
+  const dwarfsResult = spawnSync(dwarfs, [npkPath, mountPoint, '-o', 'allow_other=false,ro'], { stdio: 'pipe', timeout: 10000 })
+  if (dwarfsResult.status !== 0) throw new Error(`dwarfs mount failed: ${dwarfsResult.stderr.toString()}`)
 
   return mountPoint
 }

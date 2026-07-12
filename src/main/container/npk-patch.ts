@@ -1,9 +1,9 @@
 import fs from 'fs'
 import path from 'path'
-import { execSync } from 'child_process'
+import { spawnSync } from 'child_process'
 import crypto from 'crypto'
 import { readNpkManifest, readNpkHeader } from './npk-reader'
-import { writeNpk, getBinary } from './npk-writer'
+import { writeNpk } from './npk-writer'
 
 export async function repackNpk(
   npkPath: string,
@@ -72,7 +72,8 @@ export async function repackNpk(
 
   if (added.length === 0 && modified.length === 0) {
     const outDir = path.dirname(outputPath)
-    execSync(`cp "${npkPath}" "${outputPath}"`, { stdio: 'pipe' })
+    const cpResult = spawnSync('cp', [npkPath, outputPath], { stdio: 'pipe' })
+    if (cpResult.status !== 0) throw new Error(`cp failed: ${cpResult.stderr.toString()}`)
     onProgress?.('Done (no content changes)', 100)
     return {
       success: true,
@@ -82,46 +83,16 @@ export async function repackNpk(
     }
   }
 
-  const tempDir = fs.mkdtempSync('npk-repack-')
+  onProgress?.('Building new archive with changes...', 30)
 
-  try {
-    onProgress?.(`Generating deltas for ${modified.length} modified files...`, 30)
+  const result = await writeNpk(sourceDir, outputPath, mode, (stage, pct, file) => {
+    onProgress?.(stage, 30 + Math.round(pct * 0.65), file)
+  })
 
-    for (const relPath of modified) {
-      const fullPath = currentFiles.get(relPath)!
-      const oldEntry = oldEntriesMap.get(relPath)!
+  onProgress?.('Done', 100)
 
-      const hdiff = getBinary('hpatchz')
-      const oldTemp = path.join(tempDir, `old_${relPath.replace(/\//g, '_')}`)
-      const newTemp = path.join(tempDir, `new_${relPath.replace(/\//g, '_')}`)
-      const patchTemp = path.join(tempDir, `patch_${relPath.replace(/\//g, '_')}`)
-
-      const oldData = Buffer.from(oldEntry.hash, 'hex')
-      fs.writeFileSync(oldTemp, oldData)
-      fs.copyFileSync(fullPath, newTemp)
-
-      execSync(`"${hdiff}" -d "${oldTemp}" "${newTemp}" "${patchTemp}"`, {
-        stdio: 'pipe',
-        timeout: 300000,
-      })
-
-      try { fs.rmSync(oldTemp, { force: true }) } catch {}
-      try { fs.rmSync(newTemp, { force: true }) } catch {}
-    }
-
-    onProgress?.('Building new archive with changes...', 60)
-
-    const result = await writeNpk(sourceDir, outputPath, mode, (stage, pct, file) => {
-      onProgress?.(stage, 60 + Math.round(pct * 0.35), file)
-    })
-
-    onProgress?.('Done', 100)
-
-    return {
-      ...result,
-      filesProcessed: totalChanges,
-    }
-  } finally {
-    try { fs.rmSync(tempDir, { recursive: true, force: true }) } catch {}
+  return {
+    ...result,
+    filesProcessed: totalChanges,
   }
 }
