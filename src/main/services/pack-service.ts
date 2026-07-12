@@ -52,6 +52,7 @@ export async function estimatePack(
   const sample = sampleFiles(Math.min(files.length, 50))
   const sampleSize = sample.reduce((sum, f) => sum + fs.statSync(f).size, 0)
 
+  // TODO: replace heuristic with real sample compression (zstd level 1 on sampled files)
   const totalRatioQuick = sampleSize > 0 ? sample.reduce((sum, f) => {
     const ext = f.split('.').pop()?.toLowerCase()
     if (['jpg', 'jpeg', 'png', 'mp4', 'mkv', 'avi', 'zip', 'gz'].includes(ext || '')) {

@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { spawnSync, spawn } from 'child_process'
 import crypto from 'crypto'
+import { streamHashFile } from './stream-hash'
 
 const MAGIC_QUICK = 0x4E504B01
 const MAGIC_DEEP = 0x4E504B02
@@ -66,9 +67,9 @@ function getBinary(name: string): string {
   return path.join(getVendorPath(), `${name}${ext}`)
 }
 
-function sha256File(filePath: string): string {
-  const buf = fs.readFileSync(filePath)
-  return crypto.createHash('sha256').update(buf).digest('hex')
+// Streaming SHA-256 for large-file memory safety (avoids loading entire file into a Buffer)
+function sha256File(filePath: string): Promise<string> {
+  return streamHashFile(filePath)
 }
 
 function getFileType(filePath: string): 'file' | 'photo' | 'video' | 'raw' {
@@ -117,7 +118,7 @@ export async function writeNpk(
   for (let i = 0; i < files.length; i++) {
     const filePath = files[i]
     const stats = fs.statSync(filePath)
-    const hash = sha256File(filePath)
+    const hash = await sha256File(filePath)
     const relPath = path.relative(sourceDir, filePath)
     originalSize += stats.size
 
@@ -210,16 +211,23 @@ export async function writeNpk(
   headerBuf.writeUInt32BE(header.fileCount, 36)
   headerBuf.writeBigUInt64BE(BigInt(originalSize), 40)
 
-  const dataBuf = fs.readFileSync(dataPath)
-  const dataHash = crypto.createHash('sha256').update(dataBuf).digest('hex')
+  // Streaming SHA-256 hash of compressed data (memory-safe for large archives)
+  const dataHash = await streamHashFile(dataPath)
 
   headerBuf.write(dataHash, 48, 64, 'ascii')
 
   const outFile = fs.createWriteStream(outputPath)
   outFile.write(headerBuf)
   outFile.write(manifestFinal)
-  outFile.write(dataBuf)
-  outFile.end()
+
+  // Stream-copy compressed data into output (no full-file Buffer)
+  const dataStream = fs.createReadStream(dataPath)
+  await new Promise<void>((resolve, reject) => {
+    dataStream.pipe(outFile, { end: false })
+    dataStream.on('end', () => { outFile.end(); resolve() })
+    dataStream.on('error', reject)
+    outFile.on('error', reject)
+  })
 
   // Cleanup
   try {

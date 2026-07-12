@@ -95,6 +95,7 @@
         </div>
       </div>
       <div class="est-meta">{estimate.fileCount} files · {(estimate.totalSize / (1024 * 1024)).toFixed(1)} MB</div>
+      <div class="est-caveat">⚠ Estimated — actual results may vary</div>
 
       <div class="action-bar">
         <button class="btn btn-primary" onclick={runPack} disabled={packing}>
@@ -157,6 +158,7 @@
   .est-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
   .est-time { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 6px; }
   .est-meta { font-size: 12px; color: var(--text-muted); }
+  .est-caveat { font-size: 11px; color: var(--text-muted); opacity: 0.7; text-align: center; margin-top: -4px; }
   .log-box { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; background: var(--bg); border-radius: var(--radius-md); padding: 10px 14px; border: 1px solid var(--border); }
   .log-line { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); padding: 2px 0; }
   .log-line.done { color: var(--accent); }

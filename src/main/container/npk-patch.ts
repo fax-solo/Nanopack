@@ -1,8 +1,8 @@
 import fs from 'fs'
 import path from 'path'
 import { spawnSync } from 'child_process'
-import crypto from 'crypto'
 import { readNpkManifest, readNpkHeader } from './npk-reader'
+import { streamHashFile } from './stream-hash'
 import { writeNpk } from './npk-writer'
 
 export async function repackNpk(
@@ -41,7 +41,8 @@ export async function repackNpk(
       added.push(relPath)
     } else {
       const stats = fs.statSync(fullPath)
-      const hash = crypto.createHash('sha256').update(fs.readFileSync(fullPath)).digest('hex')
+      // Streaming SHA-256 for large-file memory safety (avoids loading entire file into a Buffer)
+      const hash = await streamHashFile(fullPath)
       if (hash !== oldEntry.hash) {
         modified.push(relPath)
       } else {
