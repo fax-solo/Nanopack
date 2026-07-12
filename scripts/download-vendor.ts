@@ -2,6 +2,10 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
+import { unpack } from '7zip-min'
+import { promisify } from 'util'
+
+const unpack7z = promisify(unpack)
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -27,7 +31,7 @@ function install(name: string, src: string) {
   fs.cpSync(src, t); fs.chmodSync(t, 0o755); log(`Installed ${name}`)
 }
 
-function extractAndInstall(archive: string, files: string[]) {
+async function extractAndInstall(archive: string, files: string[]) {
   const tmp = fs.mkdtempSync('npk-extract-')
   try {
     if (archive.endsWith('.tar.gz') || archive.endsWith('.tgz'))
@@ -35,7 +39,7 @@ function extractAndInstall(archive: string, files: string[]) {
     else if (archive.endsWith('.tar.xz'))
       execSync(`tar xJf "${archive}" -C "${tmp}" 2>&1`, { stdio: 'pipe' })
     else if (archive.endsWith('.7z'))
-      execSync(`7za x "${archive}" -o"${tmp}" -y 2>&1`, { stdio: 'pipe' })
+      await unpack7z(archive, tmp)
     else if (archive.endsWith('.zip'))
       execSync(`unzip -o "${archive}" -d "${tmp}" 2>&1`, { stdio: 'pipe' })
 
@@ -86,7 +90,7 @@ async function main() {
         log('zstd — downloading Windows binary...')
         const src = path.join(CACHE_DIR, 'zstd-win64.zip')
         download('https://github.com/facebook/zstd/releases/download/v1.5.6/zstd-v1.5.6-win64.zip', src)
-        extractAndInstall(src, ['zstd.exe'])
+        await extractAndInstall(src, ['zstd.exe'])
       } else {
         log('zstd — building from source...')
         const src = path.join(CACHE_DIR, 'zstd-1.5.6.tar.gz')
@@ -118,11 +122,11 @@ async function main() {
       if (RAW_PLATFORM === 'win32') {
         const src = path.join(CACHE_DIR, 'ffmpeg-win64.zip')
         download('https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip', src)
-        extractAndInstall(src, ['ffmpeg.exe', 'ffprobe.exe'])
+        await extractAndInstall(src, ['ffmpeg.exe', 'ffprobe.exe'])
       } else {
         const src = path.join(CACHE_DIR, 'ffmpeg-release-amd64-static.tar.xz')
         download('https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz', src)
-        extractAndInstall(src, ['ffmpeg', 'ffprobe'])
+        await extractAndInstall(src, ['ffmpeg', 'ffprobe'])
       }
     }
   }
@@ -139,11 +143,11 @@ async function main() {
       if (RAW_PLATFORM === 'win32') {
         const src = path.join(CACHE_DIR, 'dwarfs-0.15.5-Windows-AMD64.7z')
         download('https://github.com/mhx/dwarfs/releases/download/v0.15.5/dwarfs-0.15.5-Windows-AMD64.7z', src)
-        extractAndInstall(src, ['mkdwarfs.exe', 'dwarfsextract.exe'])
+        await extractAndInstall(src, ['mkdwarfs.exe', 'dwarfsextract.exe'])
       } else {
         const src = path.join(CACHE_DIR, 'dwarfs-0.15.5-Linux-x86_64.tar.xz')
         download('https://github.com/mhx/dwarfs/releases/download/v0.15.5/dwarfs-0.15.5-Linux-x86_64.tar.xz', src)
-        extractAndInstall(src, ['mkdwarfs', 'dwarfsextract'])
+        await extractAndInstall(src, ['mkdwarfs', 'dwarfsextract'])
       }
     }
   }
@@ -154,11 +158,11 @@ async function main() {
     if (RAW_PLATFORM === 'win32') {
       const src = path.join(CACHE_DIR, 'oxipng-win64.zip')
       download('https://github.com/oxipng/oxipng/releases/download/v10.1.1/oxipng-10.1.1-x86_64-pc-windows-msvc.zip', src)
-      extractAndInstall(src, ['oxipng.exe'])
+      await extractAndInstall(src, ['oxipng.exe'])
     } else {
       const src = path.join(CACHE_DIR, 'oxipng-x86_64-linux.tar.gz')
       download('https://github.com/oxipng/oxipng/releases/download/v10.1.1/oxipng-10.1.1-x86_64-unknown-linux-musl.tar.gz', src)
-      extractAndInstall(src, ['oxipng'])
+      await extractAndInstall(src, ['oxipng'])
     }
   } else { log('oxipng — present') }
 
@@ -176,7 +180,7 @@ async function main() {
       fs.cpSync(src, v2x); fs.chmodSync(v2x, 0o755)
       log('Installed video2x (AppImage)')
     } else {
-      extractAndInstall(src, ['video2x'])
+      await extractAndInstall(src, ['video2x'])
     }
   }
 
