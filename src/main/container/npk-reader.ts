@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { spawnSync, spawn } from 'child_process'
+import { spawnSync } from 'child_process'
 import crypto from 'crypto'
 import { getBinary } from './npk-writer'
 import type { NpkHeader, NpkManifest, ManifestEntry } from './npk-writer'
@@ -44,85 +44,66 @@ export function readNpkManifest(filePath: string): NpkManifest {
   return manifest
 }
 
+function copyEntriesFromStaging(
+  entries: ManifestEntry[],
+  stagingDir: string,
+  outputDir: string,
+  onProgress?: (stage: string, percent: number, file?: string) => void
+): string[] {
+  const errors: string[] = []
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]
+    const destPath = safeJoin(outputDir, entry.path)
+    if (!destPath) {
+      errors.push(`Skipped ${entry.path}: path traversal detected`)
+      continue
+    }
+    const srcPath = path.join(stagingDir, entry.path)
+    fs.mkdirSync(path.dirname(destPath), { recursive: true })
+    try {
+      fs.copyFileSync(srcPath, destPath)
+    } catch (e) {
+      errors.push(`Failed to extract ${entry.path}: ${e}`)
+    }
+    onProgress?.('Extracting files...', Math.round((i / entries.length) * 100), entry.path)
+  }
+  return errors
+}
+
 export async function extractNpk(
   npkPath: string,
   outputDir: string,
   onProgress?: (stage: string, percent: number, file?: string) => void
 ): Promise<{ success: boolean; filesProcessed: number; errors: string[] }> {
   const manifest = readNpkManifest(npkPath)
-  const header = readNpkHeader(npkPath)
+  readNpkHeader(npkPath)
   const errors: string[] = []
 
   fs.mkdirSync(outputDir, { recursive: true })
 
   if (manifest.mode === 'deep') {
-    const dwarfs = getBinary('dwarfs')
-    const mountPoint = fs.mkdtempSync('npk-mount-')
-
+    const dwarfsextract = getBinary('dwarfsextract')
+    const stagingDir = fs.mkdtempSync('npk-extract-')
     try {
-      const proc = spawn(dwarfs, [npkPath, mountPoint, '-o', 'allow_other=false,ro'])
-      await new Promise<void>((resolve, reject) => {
-        proc.on('close', (code) => {
-          if (code === 0) resolve()
-          else reject(new Error(`dwarfs mount exited with code ${code}`))
-        })
-        proc.on('error', reject)
-        setTimeout(() => resolve(), 2000)
-      })
-
-      for (let i = 0; i < manifest.entries.length; i++) {
-        const entry = manifest.entries[i]
-        const destPath = safeJoin(outputDir, entry.path)
-        if (!destPath) {
-          errors.push(`Skipped ${entry.path}: path traversal detected`)
-          continue
-        }
-        const srcPath = path.join(mountPoint, entry.path)
-        fs.mkdirSync(path.dirname(destPath), { recursive: true })
-        try {
-          fs.copyFileSync(srcPath, destPath)
-        } catch (e) {
-          errors.push(`Failed to extract ${entry.path}: ${e}`)
-        }
-        onProgress?.('Extracting files...', Math.round((i / manifest.entries.length) * 100), entry.path)
-      }
-
-      spawnSync('fusermount', ['-u', mountPoint], { stdio: 'pipe' })
-      fs.rmSync(mountPoint, { recursive: true, force: true })
-    } catch (e) {
-      errors.push(`Mount/extraction failed: ${e}`)
-      try { spawnSync('fusermount', ['-u', mountPoint], { stdio: 'pipe' }) } catch {}
-      try { fs.rmSync(mountPoint, { recursive: true, force: true }) } catch {}
+      const result = spawnSync(dwarfsextract, ['-i', npkPath, '-o', stagingDir], { stdio: 'pipe' })
+      if (result.status !== 0) throw new Error(`dwarfsextract failed: ${result.stderr.toString()}`)
+      errors.push(...copyEntriesFromStaging(manifest.entries, stagingDir, outputDir, onProgress))
+    } finally {
+      try { fs.rmSync(stagingDir, { recursive: true, force: true }) } catch {}
     }
   } else {
     const zstd = getBinary('zstd')
     const tempTar = path.join(outputDir, '..', '_npk_temp.tar')
-    const extractDir = fs.mkdtempSync('npk-extract-')
+    const stagingDir = fs.mkdtempSync('npk-extract-')
     try {
       const zstdResult = spawnSync(zstd, ['-d', '-o', tempTar, npkPath], { stdio: 'pipe' })
       if (zstdResult.status !== 0) throw new Error(`zstd decompress failed: ${zstdResult.stderr.toString()}`)
-      const tarResult = spawnSync('tar', ['xf', tempTar, '-C', extractDir], { stdio: 'pipe' })
+      const tarResult = spawnSync('tar', ['xf', tempTar, '-C', stagingDir], { stdio: 'pipe' })
       if (tarResult.status !== 0) throw new Error(`tar extract failed: ${tarResult.stderr.toString()}`)
-
-      for (let i = 0; i < manifest.entries.length; i++) {
-        const entry = manifest.entries[i]
-        const destPath = safeJoin(outputDir, entry.path)
-        if (!destPath) {
-          errors.push(`Skipped ${entry.path}: path traversal detected`)
-          continue
-        }
-        const srcPath = path.join(extractDir, entry.path)
-        fs.mkdirSync(path.dirname(destPath), { recursive: true })
-        try {
-          fs.copyFileSync(srcPath, destPath)
-        } catch (e) {
-          errors.push(`Failed to extract ${entry.path}: ${e}`)
-        }
-        onProgress?.('Extracting files...', Math.round((i / manifest.entries.length) * 100), entry.path)
-      }
+      errors.push(...copyEntriesFromStaging(manifest.entries, stagingDir, outputDir, onProgress))
     } finally {
       try { fs.rmSync(tempTar, { force: true }) } catch {}
-      try { fs.rmSync(extractDir, { recursive: true, force: true }) } catch {}
+      try { fs.rmSync(stagingDir, { recursive: true, force: true }) } catch {}
     }
   }
 

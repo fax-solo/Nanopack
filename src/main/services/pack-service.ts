@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { writeNpk } from '../container/npk-writer'
+import { requireTar } from '../utils/check-tar'
 
 export interface EstimateResult {
   quickSize: number
@@ -18,6 +19,7 @@ export async function packFiles(
   mode: 'quick' | 'deep',
   onProgress?: (stage: string, percent: number, file?: string) => void
 ) {
+  if (mode === 'quick') requireTar()
   return writeNpk(inputPath, outputPath, mode, onProgress)
 }
 
@@ -95,13 +97,19 @@ export async function unpackArchive(
   outputDir: string,
   onProgress?: (stage: string, percent: number, file?: string) => void
 ) {
-  const { extractNpk } = await import('../container/npk-reader')
+  const { extractNpk, readNpkManifest } = await import('../container/npk-reader')
+  const manifest = readNpkManifest(npkPath)
+  if (manifest.mode === 'quick') requireTar()
   return extractNpk(npkPath, outputDir, onProgress)
 }
 
 export async function mountArchive(
   npkPath: string
 ): Promise<string> {
+  if (process.platform === 'win32') {
+    throw new Error('Instant Mount is not available on Windows. Use Unpack instead.')
+  }
+
   const { readNpkHeader } = await import('../container/npk-reader')
   const header = readNpkHeader(npkPath)
 

@@ -34,6 +34,8 @@ function extractAndInstall(archive: string, files: string[]) {
       execSync(`tar xzf "${archive}" -C "${tmp}" 2>&1`, { stdio: 'pipe' })
     else if (archive.endsWith('.tar.xz'))
       execSync(`tar xJf "${archive}" -C "${tmp}" 2>&1`, { stdio: 'pipe' })
+    else if (archive.endsWith('.7z'))
+      execSync(`7za x "${archive}" -o"${tmp}" -y 2>&1`, { stdio: 'pipe' })
     else if (archive.endsWith('.zip'))
       execSync(`unzip -o "${archive}" -d "${tmp}" 2>&1`, { stdio: 'pipe' })
 
@@ -125,6 +127,27 @@ async function main() {
     }
   }
 
+  // ── DwarFS (v0.15.5 — pin: mhx/dwarfs@v0.15.5) ──────────────
+  const mkdwarfsBin = RAW_PLATFORM === 'linux' ? trySystemBin('mkdwarfs') : null
+  const dwarfsextractBin = RAW_PLATFORM === 'linux' ? trySystemBin('dwarfsextract') : null
+  if (mkdwarfsBin) { install('mkdwarfs', mkdwarfsBin); log('mkdwarfs — using system binary') }
+  if (dwarfsextractBin) { install('dwarfsextract', dwarfsextractBin); log('dwarfsextract — using system binary') }
+  if (!mkdwarfsBin || !dwarfsextractBin) {
+    if (!fs.existsSync(path.join(VENDOR_DIR, 'mkdwarfs' + EXT))) { log('mkdwarfs — missing') }
+    if (!fs.existsSync(path.join(VENDOR_DIR, 'dwarfsextract' + EXT))) { log('dwarfsextract — missing') }
+    if (!fs.existsSync(path.join(VENDOR_DIR, 'mkdwarfs' + EXT)) || !fs.existsSync(path.join(VENDOR_DIR, 'dwarfsextract' + EXT))) {
+      if (RAW_PLATFORM === 'win32') {
+        const src = path.join(CACHE_DIR, 'dwarfs-0.15.5-Windows-AMD64.7z')
+        download('https://github.com/mhx/dwarfs/releases/download/v0.15.5/dwarfs-0.15.5-Windows-AMD64.7z', src)
+        extractAndInstall(src, ['mkdwarfs.exe', 'dwarfsextract.exe'])
+      } else {
+        const src = path.join(CACHE_DIR, 'dwarfs-0.15.5-Linux-x86_64.tar.xz')
+        download('https://github.com/mhx/dwarfs/releases/download/v0.15.5/dwarfs-0.15.5-Linux-x86_64.tar.xz', src)
+        extractAndInstall(src, ['mkdwarfs', 'dwarfsextract'])
+      }
+    }
+  }
+
   // ── OxiPNG ────────────────────────────────────────────────────
   const t = path.join(VENDOR_DIR, 'oxipng' + EXT)
   if (!fs.existsSync(t)) {
@@ -143,7 +166,7 @@ async function main() {
   const v2x = path.join(VENDOR_DIR, 'video2x' + EXT)
   if (fs.existsSync(v2x)) { log('video2x — present') }
   else {
-    const v2xUrl = PLATFORM === 'win32'
+    const v2xUrl = PLATFORM === 'win'
       ? 'https://github.com/k4yt3x/video2x/releases/download/6.4.0/video2x-windows-amd64.zip'
       : 'https://github.com/k4yt3x/video2x/releases/download/6.4.0/Video2X-x86_64.AppImage'
     const srcName = path.basename(v2xUrl)
@@ -169,7 +192,6 @@ async function main() {
 
   console.log('\n✓ Vendor download complete.')
   console.log('\nManual installs still needed (place in ' + VENDOR_DIR + '):')
-  console.log('  dwarfs/mkdwarfs — https://github.com/mhx/dwarfs')
   console.log('  hpatchz         — https://github.com/sisong/HDiffPatch')
   console.log('  xdelta3         — https://github.com/jmacd/xdelta (or apt: xdelta3)')
   console.log('  bsdiff          — https://github.com/mendsley/bsdiff')

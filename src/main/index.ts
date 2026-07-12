@@ -198,9 +198,12 @@ ipcMain.handle('mount', async (_event, npkPath: string) => {
 })
 
 ipcMain.handle('unmount', async (_event, mountPath: string) => {
+  if (process.platform === 'win32') return
   const { spawnSync } = await import('child_process')
   try { spawnSync('fusermount', ['-u', mountPath], { stdio: 'pipe' }) } catch {}
 })
+
+ipcMain.handle('get-platform', () => process.platform)
 
 ipcMain.handle('verify', async (_event, npkPath: string) => {
   try { return await verifyArchive(npkPath, (stage, percent) => { sendProgress(stage, percent) }) }

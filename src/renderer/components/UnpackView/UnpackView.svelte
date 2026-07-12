@@ -8,9 +8,12 @@
   let selectingAction = $state(false)
   let working = $state(false)
   let mountPath = $state('')
+  let isWindows = $state(false)
   let result: { success: boolean; path?: string; filesProcessed?: number; errors?: string[]; message?: string } | null = $state(null)
   let verifyResult: { success: boolean; message?: string } | null = $state(null)
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
+
+  window.nanopack.getPlatform().then(p => { isWindows = p === 'win32' })
 
   async function selectNpk() {
     const p = await window.nanopack.openNpkDialog()
@@ -89,13 +92,23 @@
           <div class="act-desc">Extract all files to a folder, bit-identical to the originals.</div>
         </div>
       </div>
-      <div class="act-card" onclick={runMount}>
-        <span class="act-icon">⛰️</span>
-        <div>
-          <div class="act-name">Instant Mount</div>
-          <div class="act-desc">Browse and open files directly from the archive without extracting.</div>
+      {#if isWindows}
+        <div class="act-card disabled">
+          <span class="act-icon">⛰️</span>
+          <div>
+            <div class="act-name">Instant Mount</div>
+            <div class="act-desc">Instant Mount is available on Linux/macOS.</div>
+          </div>
         </div>
-      </div>
+      {:else}
+        <div class="act-card" onclick={runMount}>
+          <span class="act-icon">⛰️</span>
+          <div>
+            <div class="act-name">Instant Mount</div>
+            <div class="act-desc">Browse and open files directly from the archive without extracting.</div>
+          </div>
+        </div>
+      {/if}
       <div class="act-card" onclick={runVerify}>
         <span class="act-icon">✓</span>
         <div>

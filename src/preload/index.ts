@@ -87,6 +87,7 @@ const api = {
 
   getMode: (): Promise<'quick' | 'deep'> => ipcRenderer.invoke('get-mode'),
   setMode: (mode: 'quick' | 'deep'): Promise<'quick' | 'deep'> => ipcRenderer.invoke('set-mode', mode),
+  getPlatform: (): Promise<string> => ipcRenderer.invoke('get-platform'),
 
   openFolderDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
   openFileDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),

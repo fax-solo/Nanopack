@@ -11,7 +11,7 @@
 - **Pack** — Compress folders into `.npk` archives using two modes:
   - *Quick* — fast compression with solid savings
   - *Deep* — maximum compression (slower, best for archival)
-- **Unpack** — Extract archives or mount them as virtual filesystems (FUSE-based)
+- **Unpack** — Extract archives (cross-platform) or mount them as virtual filesystems (Linux/macOS only)
 - **Repack** — Update an existing archive with new source data
 - **Verify** — Check archive integrity
 - **AI Upscale** — Upscale video using Real-ESRGAN or Waifu2x engines
@@ -21,12 +21,28 @@
 
 ## Download
 
-Pre-built binaries are available on the [Releases](https://github.com/your-org/nanopack/releases) page for Linux (AppImage, deb, rpm).
+Pre-built Windows binaries are available on the [Releases](https://github.com/your-org/nanopack/releases) page.
 
 **System requirements:**
-- Linux (x86_64)
-- FUSE (for mount support)
-- Vulkan-compatible GPU (recommended for upscaling)
+- **Windows** 10 build 1803 or later (for bundled `tar.exe`)
+- **Linux** (x86_64) — CI builds in progress
+- **macOS** — planned
+- **FUSE** (for Instant Mount on Linux/macOS — `libfuse3` on Linux, FUSE-T or macFUSE on macOS)
+- **vulkan-tools** (optional, for non-NVIDIA GPU detection on Linux)
+- **Vulkan-compatible GPU** (recommended for upscaling)
+
+### Feature availability by platform
+
+| Feature        | Windows | Linux | macOS |
+|----------------|---------|-------|-------|
+| Pack (Quick)   | ✓       | ✓     | ✓     |
+| Pack (Deep)    | ✓       | ✓     | ✓     |
+| Unpack (Quick) | ✓       | ✓     | ✓     |
+| Unpack (Deep)  | ✓       | ✓     | ✓     |
+| Instant Mount  | ✗       | ✓     | ✓     |
+| Repack         | ✓       | ✓     | ✓     |
+| Verify         | ✓       | ✓     | ✓     |
+| AI Upscale     | ✓       | ✓     | ✓     |
 
 ---
 
@@ -62,6 +78,7 @@ Log in with an admin account to view:
 - **Rust** (for native node modules via `napi-rs`)
 - **clang + LLVM** (for C/C++ vendor libraries)
 - **FUSE 3** headers (`libfuse3-dev` on Debian/Ubuntu, `fuse3-devel` on Fedora)
+- **vulkan-tools** (optional, for non-NVIDIA GPU detection on Linux — `vulkaninfo` binary)
 - **Vulkan SDK** (optional, for GPU detection)
 
 ### Setup
@@ -114,7 +131,7 @@ Default admin credentials: `admin` / `admin`
 
 ```bash
 npm run build:all
-npx electron-builder build --linux
+npx electron-builder build --linux   # or --win, --mac
 ```
 
 Outputs go to `release/`.

@@ -8,12 +8,16 @@ export interface GpuInfo {
   vramGB: number
   vulkanSupported: boolean
   vendor: 'nvidia' | 'amd' | 'intel' | 'unknown'
+  error?: string
 }
 
 export async function detectGpu(): Promise<GpuInfo | null> {
+  let vulkaninfoFound = false
+
   try {
     const vkInfoBin = getBinary('vulkaninfo')
     if (fs.existsSync(vkInfoBin)) {
+      vulkaninfoFound = true
       const output = execSync(`"${vkInfoBin}" --summary 2>/dev/null || true`, {
         encoding: 'utf-8',
         timeout: 5000,
@@ -48,6 +52,10 @@ export async function detectGpu(): Promise<GpuInfo | null> {
     }
   } catch {}
 
+  if (!vulkaninfoFound) {
+    return { error: 'vulkan-tools-missing', name: '', vramGB: 0, vulkanSupported: false, vendor: 'unknown' } as GpuInfo
+  }
+
   return null
 }
 
@@ -60,6 +68,12 @@ export async function upscaleVideo(
 ): Promise<{ success: boolean; path?: string; message?: string }> {
   const gpu = await detectGpu()
   if (!gpu || !gpu.vulkanSupported) {
+    if (gpu?.error === 'vulkan-tools-missing') {
+      return {
+        success: false,
+        message: 'Vulkan detection tools aren\'t installed. Install \'vulkan-tools\' (see README) to enable AI Upscale on non-NVIDIA GPUs — NVIDIA hardware is still detected automatically.',
+      }
+    }
     return {
       success: false,
       message: 'No Vulkan-capable GPU detected. Upscaling requires a GPU with Vulkan support.',

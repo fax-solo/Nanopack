@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import { spawnSync } from 'child_process'
 import { readNpkManifest, readNpkHeader } from './npk-reader'
 import { streamHashFile } from './stream-hash'
 import { writeNpk } from './npk-writer'
@@ -72,9 +71,7 @@ export async function repackNpk(
   onProgress?.(`${added.length} added, ${modified.length} modified, ${removed.length} removed`, 10)
 
   if (added.length === 0 && modified.length === 0) {
-    const outDir = path.dirname(outputPath)
-    const cpResult = spawnSync('cp', [npkPath, outputPath], { stdio: 'pipe' })
-    if (cpResult.status !== 0) throw new Error(`cp failed: ${cpResult.stderr.toString()}`)
+    fs.copyFileSync(npkPath, outputPath)
     onProgress?.('Done (no content changes)', 100)
     return {
       success: true,
