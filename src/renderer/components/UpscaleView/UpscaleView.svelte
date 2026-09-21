@@ -2,12 +2,12 @@
   import ProgressPanel from '../ProgressPanel.svelte'
   import ResultCard from '../ResultCard.svelte'
 
-  let { mode, userId, engine, preset }: { mode: 'quick' | 'deep'; userId?: number; engine?: string; preset?: string } = $props()
+  let { engine, preset }: { engine?: string; preset?: string } = $props()
 
   let inputPath = $state('')
   let outputPath = $state('')
-  let selectedEngine = $state(engine || 'realesrgan')
-  let selectedPreset = $state(preset || '720p-1080p')
+  let selectedEngine = $state('realesrgan')
+  let selectedPreset = $state('720p-1080p')
   let working = $state(false)
   let gpu: { name: string; vramGB: number; vulkanSupported: boolean; vendor: string } | null = $state(null)
   let noGpuWarning = $state(false)
@@ -26,15 +26,24 @@
     { id: 'realesrgan', name: 'Real-ESRGAN', desc: 'Best for live-action and photorealistic footage', icon: '🎬' },
     { id: 'anime4k', name: 'Anime4K', desc: 'Fastest option, ideal for 2D animation and casual upscaling', icon: '⚡' },
   ]
-  const aggressivePresets = ['480p-4K', '480p-1080p']
+  const aggressivePresets = ['480p-1080p']
   let isAggressive = $derived(aggressivePresets.includes(selectedPreset))
+
+  $effect(() => {
+    if (engine) selectedEngine = engine
+    if (preset) selectedPreset = preset
+  })
+
+  $effect(() => {
+    if (!gpu && !noGpuWarning) detectGpu()
+  })
 
   async function selectVideo() {
     const p = await window.nanopack.openFileDialog()
     if (p) { inputPath = p; outputPath = ''; result = null }
   }
   async function selectOutput() {
-    const p = await window.nanopack.saveNpkDialog()
+    const p = await window.nanopack.saveVideoDialog()
     if (p) outputPath = p
   }
   async function detectGpu() {
@@ -72,7 +81,7 @@
       progress = data
       logs = [...logs, { text: data.stage + (data.currentFile ? ` — ${data.currentFile}` : ''), type: 'info' }]
     })
-    const r = await window.nanopack.upscale(inputPath, outPath, selectedEngine, selectedPreset, userId)
+    const r = await window.nanopack.upscale(inputPath, outPath, selectedEngine, selectedPreset)
     unsub()
     result = r; working = false
   }
@@ -86,35 +95,37 @@
   </div>
 
   <div class="input-stack">
-    <div class="path-row" onclick={selectVideo}>
+    <button type="button" class="path-row" onclick={selectVideo}>
       <span class="path-row-icon">🎬</span>
       <span class="path-row-text">{inputPath || 'Choose a video file...'}</span>
       <span class="path-row-btn">Browse</span>
-    </div>
+    </button>
     {#if inputPath}
-      <div class="path-row" onclick={selectOutput}>
+      <button type="button" class="path-row" onclick={selectOutput}>
         <span class="path-row-icon">💾</span>
         <span class="path-row-text">{outputPath || inputPath.replace(/\.[^.]+$/, '') + '_upscaled.mp4'}</span>
         <span class="path-row-btn">Save As</span>
-      </div>
+      </button>
     {/if}
   </div>
 
-  {#if inputPath && !working}
-    <div class="action-bar">
-      <button class="btn btn-secondary" onclick={detectGpu}>
-        {gpu ? '🔄 Re-detect GPU' : '🖥️ Detect GPU'}
-      </button>
+  {#if !working}
+    <div class="gpu-strip">
       {#if gpu}
-        <span class="gpu-info">{gpu.name} · {gpu.vramGB} GB</span>
+        <span class="gpu-ok">🖥️ {gpu.name} · {gpu.vramGB} GB VRAM · Vulkan ready</span>
+      {:else if gpu === null && !noGpuWarning}
+        <span class="gpu-load">Detecting GPU…</span>
+      {:else}
+        <span class="gpu-warn">No GPU detected</span>
       {/if}
+      <button class="btn btn-secondary" onclick={detectGpu} style="font-size: 11px; padding: 4px 12px;">Re-detect</button>
     </div>
   {/if}
 
   {#if noGpuWarning}
     <div class="warn-banner">
       <span>⚠</span>
-      <span>No compatible GPU (4GB+ VRAM, Vulkan). CPU upscaling will be very slow — a 90-minute video could take most of a day.</span>
+      <span>No compatible GPU found (4GB+ VRAM with Vulkan). Upscaling requires a Vulkan-capable GPU — enable it in your GPU drivers or install a Vulkan driver package (e.g. <span class="mono">vulkan-tools</span>/<span class="mono">mesa-vulkan-drivers</span> on Linux).</span>
     </div>
   {/if}
 
@@ -154,8 +165,8 @@
 
     {#if !result && !working}
       <div class="action-bar">
-        <button class="btn {noGpuWarning ? 'btn-warning' : 'btn-primary'}" onclick={runUpscale} disabled={working || downloadingModel || !inputPath}>
-          {noGpuWarning ? '⚠ Upscale anyway (very slow)' : '🚀 Start Upscale'}
+        <button class="btn btn-primary" onclick={runUpscale} disabled={working || downloadingModel || !inputPath || noGpuWarning}>
+          {working ? 'Upscaling…' : downloadingModel ? 'Downloading model…' : '🚀 Start Upscale'}
         </button>
         <button class="btn btn-secondary" onclick={reset}>Cancel</button>
       </div>
@@ -189,13 +200,16 @@
   .svc-title { font-size: 20px; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
   .svc-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
   .input-stack { display: flex; flex-direction: column; gap: 8px; }
-  .path-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); }
+  .path-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); font-family: var(--font-sans); text-align: left; color: inherit; width: 100%; }
   .path-row:hover { border-color: var(--accent); }
   .path-row-icon { font-size: 16px; flex-shrink: 0; }
   .path-row-text { flex: 1; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .path-row-btn { font-size: 11px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
   .action-bar { display: flex; gap: 10px; align-items: center; }
-  .gpu-info { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
+  .gpu-strip { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); }
+  .gpu-ok { font-size: 12px; font-family: var(--font-mono); color: var(--accent); flex: 1; }
+  .gpu-warn { font-size: 12px; font-family: var(--font-mono); color: var(--danger); flex: 1; }
+  .gpu-load { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); flex: 1; }
   .warn-banner { display: flex; gap: 10px; padding: 12px 14px; background: rgba(232, 163, 61, 0.08); border: 1px solid rgba(232, 163, 61, 0.2); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted); line-height: 1.5; }
   .section { display: flex; flex-direction: column; gap: 8px; }
   .section-title { font-size: 13px; font-weight: 600; color: var(--text); }

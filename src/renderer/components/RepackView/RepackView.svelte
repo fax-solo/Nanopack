@@ -2,7 +2,7 @@
   import ProgressPanel from '../ProgressPanel.svelte'
   import ResultCard from '../ResultCard.svelte'
 
-  let { mode, userId }: { mode: 'quick' | 'deep'; userId?: number } = $props()
+  let { mode }: { mode: 'quick' | 'deep' } = $props()
 
   let npkPath = $state('')
   let sourcePath = $state('')
@@ -32,7 +32,7 @@
       progress = data
       logs = [...logs, { text: data.stage + (data.currentFile ? ` — ${data.currentFile}` : ''), type: 'info' }]
     })
-    const r = await window.nanopack.repack(npkPath, sourcePath, outPath, mode, userId)
+    const r = await window.nanopack.repack(npkPath, sourcePath, outPath, mode)
     unsub()
     result = r; working = false
   }
@@ -46,22 +46,22 @@
   </div>
 
   <div class="input-stack">
-    <div class="path-row" onclick={selectNpk}>
+    <button type="button" class="path-row" onclick={selectNpk}>
       <span class="path-row-icon">📦</span>
       <span class="path-row-text">{npkPath || 'Choose existing .npk...'}</span>
       <span class="path-row-btn">Browse</span>
-    </div>
-    <div class="path-row" onclick={selectSource}>
+    </button>
+    <button type="button" class="path-row" onclick={selectSource}>
       <span class="path-row-icon">📁</span>
       <span class="path-row-text">{sourcePath || 'Choose updated source folder...'}</span>
       <span class="path-row-btn">Browse</span>
-    </div>
+    </button>
     {#if npkPath && sourcePath}
-      <div class="path-row" onclick={selectOutput}>
+      <button type="button" class="path-row" onclick={selectOutput}>
         <span class="path-row-icon">💾</span>
         <span class="path-row-text">{outputPath || npkPath}</span>
         <span class="path-row-btn">Save As</span>
-      </div>
+      </button>
     {/if}
   </div>
 
@@ -104,7 +104,7 @@
   .svc-title { font-size: 20px; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
   .svc-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
   .input-stack { display: flex; flex-direction: column; gap: 8px; }
-  .path-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); }
+  .path-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); font-family: var(--font-sans); text-align: left; color: inherit; width: 100%; }
   .path-row:hover { border-color: var(--accent); }
   .path-row-icon { font-size: 16px; flex-shrink: 0; }
   .path-row-text { flex: 1; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

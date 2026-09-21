@@ -1,32 +1,26 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
 
-  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin' | 'settings'
+  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'settings'
 
-  let { activeService, mode, isAdmin = false, userName = '' }: {
+  let { activeService, mode }: {
     activeService: Service
     mode: 'quick' | 'deep'
-    isAdmin?: boolean
-    userName?: string
   } = $props()
 
   const dispatch = createEventDispatcher()
 
-  const services: { id: Service; label: string; icon: string; adminOnly?: boolean }[] = [
+  const services: { id: Service; label: string; icon: string }[] = [
     { id: 'home', label: 'Home', icon: '🏠' },
     { id: 'pack', label: 'Pack', icon: '📦' },
     { id: 'unpack', label: 'Unpack', icon: '📂' },
     { id: 'repack', label: 'Repack', icon: '🔄' },
     { id: 'upscale', label: 'Upscale', icon: '🔍' },
-    { id: 'admin', label: 'Dashboard', icon: '📊', adminOnly: true },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ]
 
   function select(svc: Service) { dispatch('serviceChange', svc) }
   function setMode(m: 'quick' | 'deep') { dispatch('modeChange', m) }
-  function logout() { dispatch('logout') }
-
-  let initials = $derived(userName ? userName.slice(0, 2).toUpperCase() : 'NA')
 </script>
 
 <aside class="sidebar">
@@ -46,29 +40,21 @@
 
   <nav class="service-list">
     {#each services as svc}
-      {#if !svc.adminOnly || isAdmin}
-        <button
-          class="service-item"
-          class:active={activeService === svc.id}
-          onclick={() => select(svc.id)}
-        >
-          <span class="si-icon">{svc.icon}</span>
-          <span class="si-label">{svc.label}</span>
-          {#if activeService === svc.id}<span class="si-active"></span>{/if}
-        </button>
-      {/if}
+      <button
+        class="service-item"
+        class:active={activeService === svc.id}
+        onclick={() => select(svc.id)}
+      >
+        <span class="si-icon">{svc.icon}</span>
+        <span class="si-label">{svc.label}</span>
+        {#if activeService === svc.id}<span class="si-active"></span>{/if}
+      </button>
     {/each}
   </nav>
 
   <div class="sidebar-bottom">
-    <div class="user-card">
-      <div class="user-avatar">{initials}</div>
-      <div class="user-name">{userName || 'User'}</div>
-      <button class="user-logout" onclick={logout} title="Sign out">✕</button>
-    </div>
-
     <div class="mode-area">
-      <div class="mode-label">Mode</div>
+      <div class="mode-label">Compression mode</div>
       <div class="mode-buttons">
         <button class="mode-btn" class:active={mode === 'quick'} onclick={() => setMode('quick')}>
           Quick
@@ -77,6 +63,10 @@
           Deep
         </button>
       </div>
+    </div>
+    <div class="sidebar-foot">
+      <span>NanoPack</span>
+      <span class="foot-ver">v1.1.0</span>
     </div>
   </div>
 </aside>
@@ -177,47 +167,6 @@
     flex-direction: column;
     gap: 12px;
   }
-  .user-card {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .user-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: var(--accent-dim);
-    color: var(--bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-    font-family: var(--font-mono);
-    flex-shrink: 0;
-  }
-  .user-name {
-    flex: 1;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .user-logout {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    font-size: 12px;
-    padding: 2px 4px;
-    border-radius: var(--radius-sm);
-    line-height: 1;
-    flex-shrink: 0;
-  }
-  .user-logout:hover { color: var(--danger); background: rgba(217,99,74,0.1); }
-  .mode-area { }
   .mode-label {
     font-size: 10px;
     font-weight: 700;
@@ -252,4 +201,14 @@
     color: var(--bg);
   }
   .mode-btn.active.deep { background: var(--accent-dim); }
+  .sidebar-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 4px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+  .foot-ver { opacity: 0.6; }
 </style>

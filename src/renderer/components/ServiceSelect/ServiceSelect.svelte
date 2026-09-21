@@ -39,9 +39,9 @@
   ]
 
   const upscaleModels: Model[] = [
-    { id: 'realesrgan-720p', name: 'Real-ESRGAN 720p → 1080p', description: 'AI model optimized for upscaling 720p sources. Produces sharp 1080p output with enhanced detail and reduced artifacts.', timeEstimate: 'Slow (1-5 min/min)', savingsPercent: '—', savingsInfo: '~2.25x output' },
-    { id: 'realesrgan-1080p', name: 'Real-ESRGAN 1080p → 4K', description: 'High-quality AI upscaling from 1080p to 4K. Best for large displays and professional use. Requires a powerful GPU.', timeEstimate: 'Very slow (5-20 min/min)', savingsPercent: '—', savingsInfo: '~4x output' },
-    { id: 'waifu2x', name: 'Waifu2x (Anime)', description: 'Purpose-built for anime and digital illustration. Includes noise reduction and 2x upscaling with minimal quality loss.', timeEstimate: 'Moderate', savingsPercent: '—', savingsInfo: '~2x output' },
+    { id: '720p-1080p', name: 'Real-ESRGAN 720p → 1080p', description: 'AI model optimized for upscaling 720p sources. Produces sharp 1080p output with enhanced detail and reduced artifacts.', timeEstimate: 'Slow (1-5 min/min)', savingsPercent: '—', savingsInfo: '2.25x output' },
+    { id: '1080p-4K', name: 'Real-ESRGAN 1080p → 4K', description: 'High-quality AI upscaling from 1080p to 4K. Best for large displays and professional use. Requires a powerful GPU.', timeEstimate: 'Very slow (5-20 min/min)', savingsPercent: '—', savingsInfo: '2x output' },
+    { id: 'anime4k', name: 'Anime4K (Anime)', description: 'Purpose-built for anime and digital illustration. Fastest engine with near-real-time speeds and minimal quality loss.', timeEstimate: 'Fast', savingsPercent: '—', savingsInfo: 'Up to 3x output' },
   ]
 
   const unpackModel: Model = {
@@ -55,14 +55,26 @@
     return [unpackModel]
   }
 
+  const presetForModel: Record<string, string> = {
+    '720p-1080p': '720p-1080p',
+    '1080p-4K': '1080p-4K',
+    anime4k: '720p-1080p',
+  }
+
+  const engineForModel: Record<string, 'realesrgan' | 'anime4k'> = {
+    '720p-1080p': 'realesrgan',
+    '1080p-4K': 'realesrgan',
+    anime4k: 'anime4k',
+  }
+
   function selectContent(id: ContentType) { contentType = id; step = 'service' }
   function selectService(svc: Service) { selectedService = svc; step = 'model' }
   function selectModel(model: Model) {
     dispatch('navigate', {
       service: selectedService,
       mode: model.id === 'deep' ? 'deep' : 'quick',
-      preset: model.id.startsWith('realesrgan') || model.id === 'waifu2x' ? model.id : undefined,
-      engine: model.id === 'waifu2x' ? 'waifu2x' : model.id.startsWith('realesrgan') ? 'realesrgan' : undefined,
+      preset: selectedService === 'upscale' ? presetForModel[model.id] : model.id === 'deep' ? 'deep' : 'quick',
+      engine: selectedService === 'upscale' ? engineForModel[model.id] : undefined,
     })
   }
 

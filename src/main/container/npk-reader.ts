@@ -70,13 +70,25 @@ function copyEntriesFromStaging(
   return errors
 }
 
+function copyDataSection(filePath: string, offset: number, size: number, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const reader = fs.createReadStream(filePath, { start: offset, end: offset + size - 1 })
+    const writer = fs.createWriteStream(destPath)
+    reader.pipe(writer)
+    reader.on('end', () => writer.end())
+    writer.on('finish', () => resolve())
+    reader.on('error', reject)
+    writer.on('error', reject)
+  })
+}
+
 export async function extractNpk(
   npkPath: string,
   outputDir: string,
   onProgress?: (stage: string, percent: number, file?: string) => void
 ): Promise<{ success: boolean; filesProcessed: number; errors: string[] }> {
   const manifest = readNpkManifest(npkPath)
-  readNpkHeader(npkPath)
+  const header = readNpkHeader(npkPath)
   const errors: string[] = []
 
   fs.mkdirSync(outputDir, { recursive: true })
@@ -93,16 +105,20 @@ export async function extractNpk(
     }
   } else {
     const zstd = getBinary('zstd')
-    const tempTar = path.join(outputDir, '..', '_npk_temp.tar')
+    const tag = path.basename(outputDir)
+    const tempData = path.join(outputDir, '..', `_npk_data_${tag}.zst`)
+    const tempTar = path.join(outputDir, '..', `_npk_temp_${tag}.tar`)
     const stagingDir = fs.mkdtempSync('npk-extract-')
     try {
-      const zstdResult = spawnSync(zstd, ['-d', '-o', tempTar, npkPath], { stdio: 'pipe' })
+      await copyDataSection(npkPath, header.dataOffset, header.dataSize, tempData)
+      const zstdResult = spawnSync(zstd, ['-d', '-o', tempTar, tempData], { stdio: 'pipe' })
       if (zstdResult.status !== 0) throw new Error(`zstd decompress failed: ${zstdResult.stderr.toString()}`)
       const tarResult = spawnSync('tar', ['xf', tempTar, '-C', stagingDir], { stdio: 'pipe' })
       if (tarResult.status !== 0) throw new Error(`tar extract failed: ${tarResult.stderr.toString()}`)
       errors.push(...copyEntriesFromStaging(manifest.entries, stagingDir, outputDir, onProgress))
     } finally {
       try { fs.rmSync(tempTar, { force: true }) } catch {}
+      try { fs.rmSync(tempData, { force: true }) } catch {}
       try { fs.rmSync(stagingDir, { recursive: true, force: true }) } catch {}
     }
   }
@@ -129,27 +145,35 @@ export async function verifyNpk(
       message: `Archive truncated: expected ${expectedEnd} bytes, got ${stat.size} bytes.`,
     }
   }
+  if (stat.size > expectedEnd) {
+    return {
+      success: false,
+      message: `Archive tampered: ${stat.size - expectedEnd} unexpected trailing byte(s) after data section.`,
+    }
+  }
   onProgress?.('Verifying archive size...', 25)
 
-  const fd = fs.openSync(npkPath, 'r')
-  const dataBuf = Buffer.alloc(header.dataSize)
-  fs.readSync(fd, dataBuf, 0, header.dataSize, header.dataOffset)
-  fs.closeSync(fd)
-
-  const computedHash = crypto.createHash('sha256').update(dataBuf).digest('hex')
-  onProgress?.('Verifying archive integrity...', 50)
-
-  if (header.dataHash) {
-    if (computedHash !== header.dataHash) {
-      return {
-        success: false,
-        message: `Data corruption detected: SHA-256 hash mismatch. Expected ${header.dataHash}, got ${computedHash}.`,
-      }
+  const verifiedCount = await new Promise<number>((resolve, reject) => {
+    if (header.dataHash) {
+      const hash = crypto.createHash('sha256')
+      const stream = fs.createReadStream(npkPath, { start: header.dataOffset, end: header.dataOffset + header.dataSize - 1 })
+      stream.on('data', (chunk) => hash.update(chunk))
+      stream.on('end', () => {
+        onProgress?.('Verifying archive integrity...', 50)
+        const computedHash = hash.digest('hex')
+        if (computedHash !== header.dataHash) {
+          reject(new Error(`Data corruption detected: SHA-256 hash mismatch. Expected ${header.dataHash}, got ${computedHash}.`))
+          return
+        }
+        if (computedHash.length > 0) onProgress?.('Hash verified', 75)
+        resolve(manifest.entries.filter(e => !e.dedupRef).length)
+      })
+      stream.on('error', reject)
+    } else {
+      resolve(manifest.entries.filter(e => !e.dedupRef).length)
     }
-    onProgress?.('Hash verified', 75)
-  }
+  })
 
-  const verifiedCount = manifest.entries.filter(e => !e.dedupRef).length
   return {
     success: true,
     message: `Archive integrity verified. ${manifest.entries.length} entries, ${verifiedCount} unique files.`,

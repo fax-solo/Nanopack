@@ -9,7 +9,8 @@ export async function repackNpk(
   sourceDir: string,
   outputPath: string,
   mode: 'quick' | 'deep',
-  onProgress?: (stage: string, percent: number, file?: string) => void
+  onProgress?: (stage: string, percent: number, file?: string) => void,
+  maxThreads = 0
 ): Promise<{ success: boolean; filesProcessed: number; originalSize: number; finalSize: number }> {
   const oldManifest = readNpkManifest(npkPath)
   const oldHeader = readNpkHeader(npkPath)
@@ -70,22 +71,11 @@ export async function repackNpk(
 
   onProgress?.(`${added.length} added, ${modified.length} modified, ${removed.length} removed`, 10)
 
-  if (added.length === 0 && modified.length === 0) {
-    fs.copyFileSync(npkPath, outputPath)
-    onProgress?.('Done (no content changes)', 100)
-    return {
-      success: true,
-      filesProcessed: totalChanges,
-      originalSize: oldHeader.originalSize,
-      finalSize: fs.statSync(outputPath).size,
-    }
-  }
-
-  onProgress?.('Building new archive with changes...', 30)
+  onProgress?.('Building updated archive...', 30)
 
   const result = await writeNpk(sourceDir, outputPath, mode, (stage, pct, file) => {
     onProgress?.(stage, 30 + Math.round(pct * 0.65), file)
-  })
+  }, maxThreads)
 
   onProgress?.('Done', 100)
 

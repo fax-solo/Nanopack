@@ -6,8 +6,9 @@ export async function repackArchive(
   sourceDir: string,
   outputPath: string,
   mode: 'quick' | 'deep',
-  onProgress?: (stage: string, percent: number, file?: string) => void
+  onProgress?: (stage: string, percent: number, file?: string) => void,
+  maxThreads = 0
 ) {
   if (mode === 'quick') requireTar()
-  return repackNpk(npkPath, sourceDir, outputPath, mode, onProgress)
+  return repackNpk(npkPath, sourceDir, outputPath, mode, onProgress, maxThreads)
 }

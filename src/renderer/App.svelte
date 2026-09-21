@@ -1,22 +1,18 @@
 <script lang="ts">
-  import { fade, slide } from 'svelte/transition'
-  import AuthView from './components/AuthView/AuthView.svelte'
+  import { fade } from 'svelte/transition'
   import ServiceSelect from './components/ServiceSelect/ServiceSelect.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import PackView from './components/PackView/PackView.svelte'
   import UnpackView from './components/UnpackView/UnpackView.svelte'
   import RepackView from './components/RepackView/RepackView.svelte'
   import UpscaleView from './components/UpscaleView/UpscaleView.svelte'
-  import AdminView from './components/AdminView/AdminView.svelte'
   import SettingsView from './components/SettingsView/SettingsView.svelte'
   import DownloadBar from './components/DownloadBar.svelte'
   import Toast from './components/Toast.svelte'
   import { showToast } from './lib/toast.svelte'
 
-  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'admin' | 'settings'
+  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'settings'
 
-  let user: { id: number; username: string; display_name: string; is_admin: number; is_guest: number } | null = $state(null)
-  let token: string | null = $state(null)
   let activeService: Service = $state('home')
   let activeMode: 'quick' | 'deep' = $state('quick')
   let activeEngine: string | undefined = $state(undefined)
@@ -29,23 +25,12 @@
     const resolved = theme === 'system'
       ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
       : theme
-    document.documentElement.setAttribute('data-theme', resolved === 'light' ? 'light' : '')
+    document.documentElement.setAttribute('data-theme', resolved === 'light' ? 'light' : 'dark')
   }
 
-  async function handleAuth(event: CustomEvent) {
-    const result = event.detail
-    user = result.user
-    token = result.token
-    activeService = 'home'
-    const settings = await window.nanopack.getSettings()
-    applyTheme(settings.theme)
-  }
-
-  async function handleLogout() {
-    if (token) await window.nanopack.logout(token)
-    user = null
-    token = null
-  }
+  $effect(() => {
+    window.nanopack.getSettings().then(s => applyTheme(s.theme))
+  })
 
   function handleNavigate(event: CustomEvent) {
     const { service, mode, preset, engine } = event.detail
@@ -71,39 +56,30 @@
 
 <Toast />
 
-{#if !user}
-  <AuthView on:auth={handleAuth} />
-{:else}
-  <Sidebar
-    {activeService}
-    mode={activeMode}
-    isAdmin={user.is_admin === 1}
-    userName={user.display_name || user.username}
-    on:serviceChange={(e) => handleServiceChange(e.detail)}
-    on:modeChange={(e) => handleModeChange(e.detail)}
-    on:logout={handleLogout}
-  />
+<Sidebar
+  {activeService}
+  mode={activeMode}
+  on:serviceChange={(e) => handleServiceChange(e.detail)}
+  on:modeChange={(e) => handleModeChange(e.detail)}
+/>
 
-  <div class="workspace">
-    <DownloadBar />
-    {#key activeService}
-      <div transition:fade={{ duration: 150 }}>
-        {#if activeService === 'home'}
-          <ServiceSelect on:navigate={handleNavigate} />
-        {:else if activeService === 'pack'}
-          <PackView mode={activeMode} userId={user.id} />
-        {:else if activeService === 'unpack'}
-          <UnpackView userId={user.id} />
-        {:else if activeService === 'repack'}
-          <RepackView mode={activeMode} userId={user.id} />
-        {:else if activeService === 'upscale'}
-          <UpscaleView mode={activeMode} engine={activeEngine} preset={activePreset} userId={user.id} />
-        {:else if activeService === 'admin'}
-          <AdminView {token} />
-        {:else if activeService === 'settings'}
-          <SettingsView on:logout={handleLogout} />
-        {/if}
-      </div>
-    {/key}
-  </div>
-{/if}
+<div class="workspace">
+  <DownloadBar />
+  {#key activeService}
+    <div transition:fade={{ duration: 150 }}>
+      {#if activeService === 'home'}
+        <ServiceSelect on:navigate={handleNavigate} />
+      {:else if activeService === 'pack'}
+        <PackView mode={activeMode} />
+      {:else if activeService === 'unpack'}
+        <UnpackView />
+      {:else if activeService === 'repack'}
+        <RepackView mode={activeMode} />
+      {:else if activeService === 'upscale'}
+        <UpscaleView engine={activeEngine} preset={activePreset} />
+      {:else if activeService === 'settings'}
+        <SettingsView />
+      {/if}
+    </div>
+  {/key}
+</div>

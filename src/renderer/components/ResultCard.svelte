@@ -69,7 +69,11 @@
       <div class="rc-message">{message}</div>
     {/if}
     {#if path}
-      <div class="rc-path">{path}</div>
+      <div class="rc-path">
+        <span class="rc-path-text" title={path}>{path}</span>
+        <button class="rc-action" onclick={() => window.nanopack.revealPath(path)} title="Reveal in file manager">📍 Reveal</button>
+        <button class="rc-action" onclick={() => window.nanopack.openPath(path)} title="Open">Open</button>
+      </div>
     {/if}
   </div>
 </div>
@@ -134,5 +138,8 @@
   .rc-savings-label { font-size: 11px; color: var(--text-muted); }
 
   .rc-message { font-size: 12px; color: var(--text-muted); margin-top: 8px; line-height: 1.4; }
-  .rc-path { font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); margin-top: 6px; word-break: break-all; }
+  .rc-path { display: flex; align-items: center; gap: 8px; font-size: 11px; font-family: var(--font-mono); color: var(--text-muted); margin-top: 8px; }
+  .rc-path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rc-action { flex-shrink: 0; padding: 4px 10px; font-size: 11px; font-weight: 600; border: 1px solid var(--border); background: var(--surface-raised); color: var(--text); border-radius: var(--radius-sm); cursor: pointer; font-family: var(--font-mono); }
+  .rc-action:hover { border-color: var(--accent); color: var(--accent); }
 </style>

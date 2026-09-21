@@ -1,7 +1,7 @@
 <script lang="ts">
   import ResultCard from '../ResultCard.svelte'
 
-  let { userId }: { userId?: number } = $props()
+  let {} = $props()
 
   let npkPath = $state('')
   let outputDir = $state('')
@@ -29,7 +29,7 @@
     const unsub = window.nanopack.onProgress((data) => {
       logs = [...logs, { text: data.stage + (data.currentFile ? ` — ${data.currentFile}` : ''), type: 'info' }]
     })
-    const r = await window.nanopack.unpack(npkPath, outputDir, userId)
+    const r = await window.nanopack.unpack(npkPath, outputDir)
     unsub()
     result = r; working = false
   }
@@ -62,17 +62,17 @@
   </div>
 
   <div class="input-stack">
-    <div class="path-row" onclick={selectNpk}>
+    <button type="button" class="path-row" onclick={selectNpk}>
       <span class="path-row-icon">📦</span>
       <span class="path-row-text">{npkPath || 'Choose a .npk archive...'}</span>
       <span class="path-row-btn">Browse</span>
-    </div>
+    </button>
     {#if npkPath && selectingAction}
-      <div class="path-row" onclick={selectOutputDir}>
+      <button type="button" class="path-row" onclick={selectOutputDir}>
         <span class="path-row-icon">📂</span>
         <span class="path-row-text">{outputDir || 'Choose output folder...'}</span>
         <span class="path-row-btn">Browse</span>
-      </div>
+      </button>
     {/if}
   </div>
 
@@ -85,37 +85,37 @@
 
   {#if selectingAction}
     <div class="action-cards">
-      <div class="act-card" onclick={runUnpack}>
+      <button type="button" class="act-card" onclick={runUnpack}>
         <span class="act-icon">📂</span>
         <div>
           <div class="act-name">Full Unpack</div>
           <div class="act-desc">Extract all files to a folder, bit-identical to the originals.</div>
         </div>
-      </div>
+      </button>
       {#if isWindows}
-        <div class="act-card disabled">
+        <button type="button" class="act-card disabled" disabled>
           <span class="act-icon">⛰️</span>
           <div>
             <div class="act-name">Instant Mount</div>
             <div class="act-desc">Instant Mount is available on Linux/macOS.</div>
           </div>
-        </div>
+        </button>
       {:else}
-        <div class="act-card" onclick={runMount}>
+        <button type="button" class="act-card" onclick={runMount}>
           <span class="act-icon">⛰️</span>
           <div>
             <div class="act-name">Instant Mount</div>
             <div class="act-desc">Browse and open files directly from the archive without extracting.</div>
           </div>
-        </div>
+        </button>
       {/if}
-      <div class="act-card" onclick={runVerify}>
+      <button type="button" class="act-card" onclick={runVerify}>
         <span class="act-icon">✓</span>
         <div>
           <div class="act-name">Verify</div>
           <div class="act-desc">Recompute hashes of restored files and confirm against the archive manifest.</div>
         </div>
-      </div>
+      </button>
     </div>
   {/if}
 
@@ -164,15 +164,17 @@
   .svc-title { font-size: 20px; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
   .svc-desc { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
   .input-stack { display: flex; flex-direction: column; gap: 8px; }
-  .path-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); }
+  .path-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); font-family: var(--font-sans); text-align: left; color: inherit; width: 100%; }
   .path-row:hover { border-color: var(--accent); }
   .path-row-icon { font-size: 16px; flex-shrink: 0; }
   .path-row-text { flex: 1; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .path-row-btn { font-size: 11px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
   .action-bar { display: flex; gap: 10px; }
   .action-cards { display: flex; flex-direction: column; gap: 8px; }
-  .act-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); }
+  .act-card { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); cursor: pointer; transition: all var(--transition-fast); font-family: var(--font-sans); text-align: left; color: inherit; width: 100%; }
   .act-card:hover { border-color: var(--accent); }
+  .act-card.disabled { opacity: 0.55; cursor: not-allowed; }
+  .act-card.disabled:hover { border-color: var(--border); }
   .act-icon { font-size: 24px; flex-shrink: 0; }
   .act-name { font-size: 14px; font-weight: 600; color: var(--text); }
   .act-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }

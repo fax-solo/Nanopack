@@ -21,7 +21,7 @@ win:
     - target: nsis
       arch:
         - x64
-  icon: null
+  icon: resources/icon-256.png
 
 nsis:
   oneClick: false

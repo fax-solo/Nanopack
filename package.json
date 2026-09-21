@@ -12,12 +12,12 @@
     "start": "npm run build:all && electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
+    "test": "tsx tests/run.ts",
     "download-vendor": "tsx scripts/download-vendor.ts",
     "install-vendor": "tsx scripts/install-all-vendor.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "7zip-min": "^3.0.1",
     "electron": "^33.4.11",
@@ -31,9 +31,8 @@
   },
   "allowScripts": {
     "electron@33.4.11": true,
-    "better-sqlite3@12.11.1": true
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
   },
-  "dependencies": {
-    "better-sqlite3": "^12.11.1"
-  }
+  "dependencies": {}
 }

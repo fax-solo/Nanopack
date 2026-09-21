@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte'
   import Skeleton from '../Skeleton.svelte'
 
   interface Settings {
@@ -9,8 +8,6 @@
     confirmBeforeRun: boolean
     maxThreads: number
   }
-
-  const dispatch = createEventDispatcher()
 
   let settings = $state<Settings | null>(null)
   let changed = $state(false)
@@ -36,7 +33,6 @@
     await window.nanopack.setSetting('maxThreads', settings.maxThreads)
     applyTheme(settings.theme)
     changed = false
-    dispatch('themeChange', settings.theme)
   }
 
   async function selectOutputDir() {
@@ -118,6 +114,7 @@
           onclick={toggleConfirm}
           role="switch"
           aria-checked={settings.confirmBeforeRun}
+          aria-label="Confirm before running"
         >
           <span class="toggle-knob"></span>
         </button>
@@ -165,21 +162,6 @@
       </div>
     </section>
 
-    <!-- Account -->
-    <section class="settings-section">
-      <div class="section-title">Account</div>
-
-      <div class="setting-row">
-        <div>
-          <div class="setting-label">Sign out</div>
-          <div class="setting-desc">Return to the login screen</div>
-        </div>
-        <button class="btn btn-secondary" style="font-size: 12px; color: var(--danger);" onclick={() => dispatch('logout')}>
-          Sign Out
-        </button>
-      </div>
-    </section>
-
     <!-- About -->
     <section class="settings-section">
       <div class="section-title">About</div>
@@ -189,7 +171,7 @@
           <div class="setting-label">NanoPack</div>
           <div class="setting-desc">Precision archiving</div>
         </div>
-        <div class="mono" style="color: var(--text-muted); font-size: 13px;">v1.0.0</div>
+        <div class="mono" style="color: var(--text-muted); font-size: 13px;">v1.1.0</div>
       </div>
     </section>
 

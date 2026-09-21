@@ -44,42 +44,6 @@ export interface DownloadTask {
   error?: string
 }
 
-export interface User {
-  id: number
-  username: string
-  display_name: string
-  is_admin: number
-  is_guest: number
-  created_at: string
-  last_login: string | null
-}
-
-export interface AuthResult {
-  success: boolean
-  user?: User
-  token?: string
-  error?: string
-}
-
-export interface DashboardStats {
-  totalUsers: number
-  activeUsersToday: number
-  activeUsersThisWeek: number
-  activeUsersThisMonth: number
-  newUsersThisDay: number
-  newUsersThisMonth: number
-  totalUsesToday: number
-  totalUsesThisMonth: number
-  totalUsesThisYear: number
-  totalUsesAllTime: number
-  totalInputSize: number
-  totalOutputSize: number
-  usesByService: { service: string; count: number }[]
-  recentActivity: { id: number; user_id: number; username: string; service: string; mode: string | null; created_at: string }[]
-  usersByDay: { day: string; count: number }[]
-  usesByDay: { day: string; count: number }[]
-}
-
 export interface AppSettings {
   mode: 'quick' | 'deep'
   windowBounds: { width: number; height: number }
@@ -103,30 +67,26 @@ const api = {
   openFileDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
   openNpkDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openNpk'),
   saveNpkDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:saveNpk'),
-
-  // Auth
-  register: (username: string, password: string, displayName?: string): Promise<AuthResult> =>
-    ipcRenderer.invoke('auth:register', username, password, displayName),
-  login: (username: string, password: string): Promise<AuthResult> =>
-    ipcRenderer.invoke('auth:login', username, password),
-  guestLogin: (): Promise<AuthResult> => ipcRenderer.invoke('auth:guest'),
-  validateSession: (token: string): Promise<User | null> => ipcRenderer.invoke('auth:validate', token),
-  logout: (token: string): Promise<void> => ipcRenderer.invoke('auth:logout', token),
+  saveVideoDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:saveFile', [
+    { name: 'Video', extensions: ['mp4', 'mkv', 'webm', 'mov'] },
+  ]),
+  revealPath: (p: string): Promise<boolean> => ipcRenderer.invoke('reveal-path', p),
+  openPath: (p: string): Promise<boolean> => ipcRenderer.invoke('open-path', p),
 
   // Services
-  pack: (inputPath: string, outputPath: string, mode: 'quick' | 'deep', userId?: number): Promise<NpkResult> =>
-    ipcRenderer.invoke('pack', inputPath, outputPath, mode, userId),
-  unpack: (npkPath: string, outputDir: string, userId?: number): Promise<NpkResult> =>
-    ipcRenderer.invoke('unpack', npkPath, outputDir, userId),
+  pack: (inputPath: string, outputPath: string, mode: 'quick' | 'deep'): Promise<NpkResult> =>
+    ipcRenderer.invoke('pack', inputPath, outputPath, mode),
+  unpack: (npkPath: string, outputDir: string): Promise<NpkResult> =>
+    ipcRenderer.invoke('unpack', npkPath, outputDir),
   mount: (npkPath: string): Promise<string> => ipcRenderer.invoke('mount', npkPath),
   unmount: (mountPath: string): Promise<void> => ipcRenderer.invoke('unmount', mountPath),
   verify: (npkPath: string): Promise<NpkResult> => ipcRenderer.invoke('verify', npkPath),
-  repack: (npkPath: string, sourceDir: string, outputPath: string, mode: 'quick' | 'deep', userId?: number): Promise<NpkResult> =>
-    ipcRenderer.invoke('repack', npkPath, sourceDir, outputPath, mode, userId),
+  repack: (npkPath: string, sourceDir: string, outputPath: string, mode: 'quick' | 'deep'): Promise<NpkResult> =>
+    ipcRenderer.invoke('repack', npkPath, sourceDir, outputPath, mode),
   estimate: (inputPath: string): Promise<EstimateResult> =>
     ipcRenderer.invoke('estimate', inputPath),
-  upscale: (inputPath: string, outputPath: string, engine: string, preset: string, userId?: number): Promise<NpkResult> =>
-    ipcRenderer.invoke('upscale', inputPath, outputPath, engine, preset, userId),
+  upscale: (inputPath: string, outputPath: string, engine: string, preset: string): Promise<NpkResult> =>
+    ipcRenderer.invoke('upscale', inputPath, outputPath, engine, preset),
   detectGpu: (): Promise<GpuInfo | null> => ipcRenderer.invoke('detect-gpu'),
 
   startDownload: (id: string, name: string, url: string, dest: string): Promise<DownloadTask> =>
@@ -141,12 +101,6 @@ const api = {
     ipcRenderer.on('download-progress', listener)
     return () => ipcRenderer.removeListener('download-progress', listener)
   },
-
-  // Dashboard
-  getDashboardStats: (token: string): Promise<DashboardStats> => ipcRenderer.invoke('dashboard:stats', token),
-  getUserStats: (token: string, userId: number): Promise<{ totalUses: number; totalInput: number; totalOutput: number; usesByService: { service: string; count: number }[] }> =>
-    ipcRenderer.invoke('dashboard:userStats', token, userId),
-  getAllUsers: (token: string): Promise<User[]> => ipcRenderer.invoke('dashboard:allUsers', token),
 
   onProgress: (callback: (data: ProgressData) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: ProgressData) => callback(data)

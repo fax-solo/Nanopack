@@ -88,7 +88,8 @@ export async function writeNpk(
   sourceDir: string,
   outputPath: string,
   mode: 'quick' | 'deep',
-  onProgress?: (stage: string, percent: number, file?: string) => void
+  onProgress?: (stage: string, percent: number, file?: string) => void,
+  maxThreads = 0
 ): Promise<{ success: boolean; filesProcessed: number; originalSize: number; finalSize: number }> {
   const files: string[] = []
   function walkDir(dir: string) {
@@ -161,6 +162,7 @@ export async function writeNpk(
         '-o', dataPath,
         '-l', '6',
       ]
+      if (maxThreads > 0) args.push('-p', String(maxThreads))
       const dwarfsResult = spawnSync(dwarfs, args, { stdio: 'pipe' })
       if (dwarfsResult.status !== 0) throw new Error(`mkdwarfs failed: ${dwarfsResult.stderr.toString()}`)
     } else {
@@ -169,7 +171,7 @@ export async function writeNpk(
       const tempTar = path.join(tempDir, 'data.tar')
       const tarResult = spawnSync('tar', ['cf', tempTar, '-C', sourceDir, '.'], { stdio: 'pipe' })
       if (tarResult.status !== 0) throw new Error(`tar failed: ${tarResult.stderr.toString()}`)
-      const zstdResult = spawnSync(zstd, ['-3', '-f', '-o', dataPath, tempTar], { stdio: 'pipe' })
+      const zstdResult = spawnSync(zstd, ['-3', '-f', `-T${maxThreads || 0}`, '-o', dataPath, tempTar], { stdio: 'pipe' })
       if (zstdResult.status !== 0) throw new Error(`zstd compress failed: ${zstdResult.stderr.toString()}`)
       try { fs.rmSync(tempTar, { force: true }) } catch {}
     }

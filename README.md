@@ -1,6 +1,6 @@
 # NanoPack
 
-**Precision archiving** — a modern desktop archiver with best-in-class compression, AI-powered video upscaling, and a native Electron UI.
+**Precision archiving** — a modern local desktop archiver with best-in-class compression, AI-powered video upscaling, and a native Electron UI.
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](#)
 
@@ -13,9 +13,10 @@
   - *Deep* — maximum compression (slower, best for archival)
 - **Unpack** — Extract archives (cross-platform) or mount them as virtual filesystems (Linux/macOS only)
 - **Repack** — Update an existing archive with new source data
-- **Verify** — Check archive integrity
-- **AI Upscale** — Upscale video using Real-ESRGAN or Waifu2x engines
-- **Admin Dashboard** — Usage analytics, active user tracking, per-service statistics
+- **Verify** — Check archive integrity (streamed hash + corruption detection)
+- **AI Upscale** — Upscale video using Real-ESRGAN or Anime4K engines
+- **Size estimate** — Live compression preview before packing (sampled zstd compression)
+- **100% local** — no accounts, no login, no server; everything runs on your machine
 
 ---
 
@@ -24,8 +25,8 @@
 Pre-built Windows binaries are available on the [Releases](https://github.com/your-org/nanopack/releases) page.
 
 **System requirements:**
-- **Windows** 10 build 1803 or later (for bundled `tar.exe`)
-- **Linux** (x86_64) — CI builds in progress
+- **Linux** (x86_64) — recommended
+- **Windows** 10 build 1803 or later (for `tar.exe`)
 - **macOS** — planned
 - **FUSE** (for Instant Mount on Linux/macOS — `libfuse3` on Linux, FUSE-T or macFUSE on macOS)
 - **vulkan-tools** (optional, for non-NVIDIA GPU detection on Linux)
@@ -48,24 +49,13 @@ Pre-built Windows binaries are available on the [Releases](https://github.com/yo
 
 ## For Users
 
-After launching NanoPack:
+After launching NanoPack, the app opens straight to the workspace:
 
-1. **Log in** — use `admin` / `admin` to access the admin dashboard, or register a new account / continue as guest
-2. **Select a service** — Pack, Unpack, Repack, or Upscale from the sidebar
-3. **Choose a mode** — Quick (fast) or Deep (maximum compression) at the bottom of the sidebar
-4. **Run** — pick your files and hit the button
+1. **Select a service** — Pack, Unpack, Repack, or Upscale from the sidebar
+2. **Choose a mode** — Quick (fast) or Deep (maximum compression) at the bottom of the sidebar
+3. **Run** — pick your files and hit the button
 
-### Admin Dashboard
-
-Log in with an admin account to view:
-
-- Active users (today, this week, this month)
-- New users (today, this month)
-- Total operations (today, month, year, all-time)
-- Input/output data volumes
-- Usage breakdown by service
-- Recent activity feed
-- All registered users
+No sign-in required. Everything is stored locally on your computer.
 
 ---
 
@@ -75,7 +65,6 @@ Log in with an admin account to view:
 
 - **Node.js** ≥ 18
 - **npm** ≥ 9
-- **Rust** (for native node modules via `napi-rs`)
 - **clang + LLVM** (for C/C++ vendor libraries)
 - **FUSE 3** headers (`libfuse3-dev` on Debian/Ubuntu, `fuse3-devel` on Fedora)
 - **vulkan-tools** (optional, for non-NVIDIA GPU detection on Linux — `vulkaninfo` binary)
@@ -89,18 +78,12 @@ cd nanopack
 npm install
 ```
 
-> Some native modules (`better-sqlite3`, `esbuild`) need their install scripts to run. Approve them with:
-> ```bash
-> npm install-scripts approve better-sqlite3
-> npm install-scripts approve esbuild
-> ```
-
 ### Development
 
 ```bash
-npm run dev      # Launch in dev mode (Vite HMR + Electron)
+npm run dev        # Launch in dev mode (Vite HMR + Electron)
 npm run build:all  # Type-check and build all targets
-npm run lint     # Lint source
+npm test           # Run the test suite (roundtrip, repack, safe-join)
 ```
 
 ### Project structure
@@ -108,24 +91,21 @@ npm run lint     # Lint source
 ```
 src/
 ├── main/             # Electron main process
-│   ├── auth/         # Auth (register, login, sessions, guest)
-│   ├── database/     # SQLite schema & connection
+│   ├── container/    # NPK format (read/write/patch) + tests
 │   ├── services/     # Pack, unpack, repack, upscale, verify logic
 │   └── index.ts      # IPC handlers, app lifecycle
 ├── preload/          # Electron preload (contextBridge API)
 ├── renderer/         # Svelte 5 frontend
-│   ├── components/   # AuthView, AdminView, PackView, etc.
-│   └── App.svelte    # Root component with auth guard
+│   └── components/   # PackView, UnpackView, RepackView, UpscaleView, etc.
 vendor/               # C/Rust libraries (lepton, bsdiff, etc.)
+tests/                # Test runner
 ```
 
-### Database
+### Configuration
 
-NanoPack uses SQLite via `better-sqlite3`. The database is created automatically at:
-- **Linux**: `~/.config/nanopack/nanopack.db` (or the `XDG` equivalents)
-- **Dev fallback**: `.nanopack-data/nanopack.db` in the project root
-
-Default admin credentials: `admin` / `admin`
+User settings (theme, output directory, thread count) are stored in a local JSON config next to the app data directory:
+- **Linux**: `~/.config/nanopack/config.json`
+- **Windows**: `%APPDATA%\nanopack\config.json`
 
 ### Building for production
 

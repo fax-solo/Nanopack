@@ -3,7 +3,7 @@
   import ProgressPanel from '../ProgressPanel.svelte'
   import ResultCard from '../ResultCard.svelte'
 
-  let { mode, userId }: { mode: 'quick' | 'deep'; userId?: number } = $props()
+  let { mode }: { mode: 'quick' | 'deep' } = $props()
 
   let sourcePath = $state('')
   let outputPath = $state('')
@@ -39,7 +39,7 @@
       progress = data
       logs = [...logs, { text: data.stage + (data.currentFile ? ` — ${data.currentFile}` : ''), type: 'info' }]
     })
-    const r = await window.nanopack.pack(sourcePath, outPath, mode, userId)
+    const r = await window.nanopack.pack(sourcePath, outPath, mode)
     unsub()
     result = r
     packing = false
@@ -58,17 +58,17 @@
   </div>
 
   <div class="input-stack">
-    <div class="path-row" onclick={selectFolder}>
+    <button type="button" class="path-row" onclick={selectFolder}>
       <span class="path-row-icon">📁</span>
       <span class="path-row-text">{sourcePath || 'Choose source folder...'}</span>
       <span class="path-row-btn">Browse</span>
-    </div>
+    </button>
     {#if sourcePath}
-      <div class="path-row" onclick={selectOutput}>
+      <button type="button" class="path-row" onclick={selectOutput}>
         <span class="path-row-icon">💾</span>
         <span class="path-row-text">{outputPath || sourcePath.replace(/\/?$/, '') + '.npk'}</span>
         <span class="path-row-btn">Save As</span>
-      </div>
+      </button>
     {/if}
   </div>
 
@@ -146,6 +146,10 @@
     border-radius: var(--radius-md);
     cursor: pointer;
     transition: all var(--transition-fast);
+    font-family: var(--font-sans);
+    text-align: left;
+    color: inherit;
+    width: 100%;
   }
   .path-row:hover { border-color: var(--accent); }
   .path-row-icon { font-size: 16px; flex-shrink: 0; }

@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, shell } from 'electron'
+import fs from 'fs'
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.nanopack.app')
@@ -12,9 +13,6 @@ import { upscaleVideo, detectGpu } from './services/upscale-service'
 import { startDownload, cancelDownload, setProgressCallback, getDownloads } from './services/download-service'
 import { modelExists, getModelDownloadInfo } from './utils/model-download'
 import { initStore, get as storeGet, set as storeSet, getAll as storeGetAll } from './store'
-import { initDatabase } from './database/schema'
-import { registerUser, loginUser, createGuestUser, validateSession, logoutSession, getAllUsers, getUserById } from './auth/auth-service'
-import { logUsage, logEvent, getDashboardStats, getUserStats } from './auth/usage-service'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -94,7 +92,6 @@ function createWindow() {
 app.whenReady().then(() => {
   try {
     initStore()
-    initDatabase()
     createWindow()
     createTray()
 
@@ -149,31 +146,36 @@ ipcMain.handle('dialog:saveNpk', async () => {
   })
   return result.canceled ? null : result.filePath
 })
-
-// ── Auth ───────────────────────────────────────────────────────────
-ipcMain.handle('auth:register', (_event, username: string, password: string, displayName?: string) => {
-  return registerUser(username, password, displayName)
+ipcMain.handle('dialog:saveFile', async (_event, filters?: { name: string; extensions: string[] }[]) => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    filters,
+  })
+  return result.canceled ? null : result.filePath
 })
-ipcMain.handle('auth:login', (_event, username: string, password: string) => {
-  return loginUser(username, password)
+ipcMain.handle('reveal-path', async (_event, p: string) => {
+  try {
+    if (!p) return false
+    if (!fs.existsSync(p)) return false
+    shell.showItemInFolder(p)
+    return true
+  } catch { return false }
 })
-ipcMain.handle('auth:guest', () => {
-  try { return createGuestUser() }
-  catch (e: any) { return { success: false, error: e.message } }
+ipcMain.handle('open-path', async (_event, p: string) => {
+  try {
+    if (!p) return false
+    if (!fs.existsSync(p)) return false
+    await shell.openPath(p)
+    return true
+  } catch { return false }
 })
-ipcMain.handle('auth:validate', (_event, token: string) => validateSession(token))
-ipcMain.handle('auth:logout', (_event, token: string) => logoutSession(token))
 
 // ── Services ───────────────────────────────────────────────────────
-ipcMain.handle('pack', async (_event, inputPath: string, outputPath: string, mode: 'quick' | 'deep', userId?: number) => {
+ipcMain.handle('pack', async (_event, inputPath: string, outputPath: string, mode: 'quick' | 'deep') => {
   try {
-    const start = Date.now()
+    const threads = storeGet('maxThreads')
     const result = await packFiles(inputPath, outputPath, mode, (stage, percent, file) => {
       sendProgress(stage, percent, Math.round(percent), 100, file)
-    })
-    if (userId && result.success) {
-      logUsage(userId, 'pack', mode, result.originalSize, result.finalSize, result.filesProcessed, Date.now() - start)
-    }
+    }, threads)
     return result
   } catch (e: any) {
     return { success: false, message: e.message }
@@ -181,17 +183,15 @@ ipcMain.handle('pack', async (_event, inputPath: string, outputPath: string, mod
 })
 
 ipcMain.handle('estimate', async (_event, inputPath: string) => {
-  try { return await estimatePack(inputPath, (stage, percent) => { sendProgress(stage, percent) }) }
+  try { return await estimatePack(inputPath, (stage, percent) => { sendProgress(stage, percent) }, storeGet('maxThreads')) }
   catch { return { quickSize: 0, deepSize: 0, quickTime: 0, deepTime: 0, fileCount: 0, totalSize: 0 } }
 })
 
-ipcMain.handle('unpack', async (_event, npkPath: string, outputDir: string, userId?: number) => {
+ipcMain.handle('unpack', async (_event, npkPath: string, outputDir: string) => {
   try {
-    const start = Date.now()
     const result = await unpackArchive(npkPath, outputDir, (stage, percent, file) => {
       sendProgress(stage, percent, Math.round(percent), 100, file)
     })
-    if (userId) logUsage(userId, 'unpack', null, 0, 0, result.filesProcessed, Date.now() - start)
     return { success: result.success, filesProcessed: result.filesProcessed, path: outputDir, errors: result.errors }
   } catch (e: any) {
     return { success: false, message: e.message, errors: [e.message] }
@@ -235,26 +235,23 @@ ipcMain.handle('verify', async (_event, npkPath: string) => {
   catch (e: any) { return { success: false, message: e.message } }
 })
 
-ipcMain.handle('repack', async (_event, npkPath: string, sourceDir: string, outputPath: string, mode: 'quick' | 'deep', userId?: number) => {
+ipcMain.handle('repack', async (_event, npkPath: string, sourceDir: string, outputPath: string, mode: 'quick' | 'deep') => {
   try {
-    const start = Date.now()
+    const threads = storeGet('maxThreads')
     const result = await repackArchive(npkPath, sourceDir, outputPath, mode, (stage, percent, file) => {
       sendProgress(stage, percent, Math.round(percent), 100, file)
-    })
-    if (userId && result.success) logUsage(userId, 'repack', mode, result.originalSize, result.finalSize, result.filesProcessed, Date.now() - start)
+    }, threads)
     return result
   } catch (e: any) {
     return { success: false, message: e.message }
   }
 })
 
-ipcMain.handle('upscale', async (_event, inputPath: string, outputPath: string, engine: string, preset: string, userId?: number) => {
+ipcMain.handle('upscale', async (_event, inputPath: string, outputPath: string, engine: string, preset: string) => {
   try {
-    const start = Date.now()
     const result = await upscaleVideo(inputPath, outputPath, engine, preset, (stage, percent, file) => {
       sendProgress(stage, percent, Math.round(percent), 100, file)
     })
-    if (userId) logUsage(userId, 'upscale', engine, 0, 0, 1, Date.now() - start)
     return result
   } catch (e: any) {
     return { success: false, message: e.message }
@@ -264,27 +261,4 @@ ipcMain.handle('upscale', async (_event, inputPath: string, outputPath: string, 
 ipcMain.handle('detect-gpu', async () => {
   try { return await detectGpu() }
   catch { return null }
-})
-
-// ── Dashboard ──────────────────────────────────────────────────────
-function requireAdmin(token: string): { success: false; error: string } | null {
-  const user = validateSession(token)
-  if (!user || !user.is_admin) return { success: false, error: 'Forbidden' }
-  return null
-}
-
-ipcMain.handle('dashboard:stats', async (_event, token: string) => {
-  const auth = requireAdmin(token)
-  if (auth) return auth
-  return getDashboardStats()
-})
-ipcMain.handle('dashboard:userStats', async (_event, token: string, userId: number) => {
-  const auth = requireAdmin(token)
-  if (auth) return auth
-  return getUserStats(userId)
-})
-ipcMain.handle('dashboard:allUsers', async (_event, token: string) => {
-  const auth = requireAdmin(token)
-  if (auth) return auth
-  return getAllUsers()
 })
