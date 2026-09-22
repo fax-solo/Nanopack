@@ -14,7 +14,6 @@
   let themePreview = $state(false)
   let version = $state('')
   let updateStatus = $state<import('../../../preload/index').UpdateState | null>(null)
-  let updateBusy = $state(false)
 
   async function load() {
     settings = await window.nanopack.getSettings()
@@ -23,8 +22,6 @@
     updateStatus = await window.nanopack.getUpdateState()
     window.nanopack.onUpdateStatus((s) => {
       updateStatus = s
-      if (s.state === 'error' || s.state === 'up-to-date') updateBusy = false
-      if (s.state === 'downloaded') updateBusy = false
     })
   }
 
@@ -78,12 +75,11 @@
   }
 
   async function checkUpdate() {
-    updateBusy = true
+    updateStatus = { state: 'checking' }
     updateStatus = await window.nanopack.checkUpdate()
   }
 
   async function downloadUpdate() {
-    updateBusy = true
     updateStatus = await window.nanopack.downloadUpdate()
   }
 
@@ -197,7 +193,7 @@
         </div>
         <div class="update-actions">
           {#if updateStatus?.state === 'available'}
-            <button class="btn btn-secondary" onclick={downloadUpdate} disabled={updateBusy} style="font-size: 12px;">
+            <button class="btn btn-secondary" onclick={downloadUpdate} style="font-size: 12px;">
               Download Update
             </button>
           {:else if updateStatus?.state === 'downloading'}
@@ -209,7 +205,7 @@
           {:else if updateStatus?.state === 'checking'}
             <span class="update-status">Checking…</span>
           {:else}
-            <button class="btn btn-secondary" onclick={checkUpdate} disabled={updateBusy} style="font-size: 12px;">
+            <button class="btn btn-secondary" onclick={checkUpdate} style="font-size: 12px;">
               Check for Updates
             </button>
           {/if}

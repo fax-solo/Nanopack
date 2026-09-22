@@ -10,6 +10,8 @@ export interface UpdateState {
 }
 
 let currentState: UpdateState = { state: 'idle' }
+let initialized = false
+let checkInFlight = false
 
 function getMainWindow(): BrowserWindow | null {
   return BrowserWindow.getAllWindows()[0] || null
@@ -20,34 +22,60 @@ function emit(state: UpdateState) {
   getMainWindow()?.webContents.send('update-status', state)
 }
 
-function initUpdater() {
+function fail(err: unknown) {
+  checkInFlight = false
+  emit({ state: 'error', message: (err as Error)?.message || String(err) })
+}
+
+function ensureInit() {
+  if (initialized) return
+  initialized = true
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
-
+  // Use the explicit feed URL even in dev so Check always works
+  // (not just when packaged with an embedded app-update.yml).
+  autoUpdater.forceDevUpdateConfig = true
   autoUpdater.setFeedURL({ provider: 'github', owner: 'fax-solo', repo: 'Nanopack' })
 
   autoUpdater.on('checking-for-update', () => emit({ state: 'checking' }))
-  autoUpdater.on('update-available', (info) => emit({ state: 'available', version: info.version }))
-  autoUpdater.on('update-not-available', (info) => emit({ state: 'up-to-date', version: info.version }))
+  autoUpdater.on('update-available', (info) => { checkInFlight = false; emit({ state: 'available', version: info.version }) })
+  autoUpdater.on('update-not-available', (info) => { checkInFlight = false; emit({ state: 'up-to-date', version: info.version }) })
   autoUpdater.on('download-progress', (progress) =>
     emit({ state: 'downloading', progress: Math.round(progress.percent), downloadedVersion: currentState.version })
   )
   autoUpdater.on('update-downloaded', (info) => emit({ state: 'downloaded', downloadedVersion: info.version }))
-  autoUpdater.on('error', (err) => emit({ state: 'error', message: err?.message || String(err) }))
+  autoUpdater.on('error', fail)
 }
 
 export function checkForUpdates(): UpdateState {
-  if (!app.isPackaged) {
-    emit({ state: 'up-to-date', message: 'Updates are only checked in packaged builds.' })
+  try {
+    ensureInit()
+  } catch (err) {
+    fail(err)
     return currentState
   }
-  initUpdater()
-  autoUpdater.checkForUpdates().catch((err) => emit({ state: 'error', message: err?.message || String(err) }))
+  if (checkInFlight) {
+    // An automatic or earlier check is already running; drive the UI from it.
+    emit({ state: 'checking' })
+    return currentState
+  }
+  checkInFlight = true
+  emit({ state: 'checking' })
+  autoUpdater
+    .checkForUpdates()
+    .then(() => { checkInFlight = false })
+    .catch(fail)
   return currentState
 }
 
 export function downloadUpdate(): UpdateState {
-  autoUpdater.downloadUpdate().catch((err) => emit({ state: 'error', message: err?.message || String(err) }))
+  try {
+    ensureInit()
+  } catch (err) {
+    fail(err)
+    return currentState
+  }
+  autoUpdater.downloadUpdate().catch(fail)
   return currentState
 }
 
@@ -61,10 +89,12 @@ export function getUpdateState(): UpdateState {
 
 export function silentCheckForUpdates(): void {
   if (!app.isPackaged) return
-  try {
-    initUpdater()
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(() => {})
-    }, 5000)
-  } catch {}
+  setTimeout(() => {
+    try {
+      ensureInit()
+      if (checkInFlight) return
+      checkInFlight = true
+      autoUpdater.checkForUpdates().then(() => { checkInFlight = false }).catch(() => { checkInFlight = false })
+    } catch {}
+  }, 5000)
 }
