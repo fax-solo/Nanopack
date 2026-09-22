@@ -13,6 +13,7 @@ import { upscaleVideo, detectGpu } from './services/upscale-service'
 import { startDownload, cancelDownload, setProgressCallback, getDownloads } from './services/download-service'
 import { modelExists, getModelDownloadInfo } from './utils/model-download'
 import { initStore, get as storeGet, set as storeSet, getAll as storeGetAll } from './store'
+import { checkForUpdates, downloadUpdate, quitAndInstall, getUpdateState, silentCheckForUpdates } from './update'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -98,6 +99,7 @@ app.whenReady().then(() => {
     setProgressCallback((task) => {
       mainWindow?.webContents.send('download-progress', task)
     })
+    silentCheckForUpdates()
   } catch (err) {
     console.error('Failed to initialize app:', err)
   }
@@ -117,6 +119,13 @@ ipcMain.handle('settings:getAll', () => storeGetAll())
 ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
   storeSet(key as any, value)
 })
+
+// ── Updates ─────────────────────────────────────────────────────────
+ipcMain.handle('get-version', () => app.getVersion())
+ipcMain.handle('update:check', () => checkForUpdates())
+ipcMain.handle('update:download', () => downloadUpdate())
+ipcMain.handle('update:install', () => quitAndInstall())
+ipcMain.handle('update:state', () => getUpdateState())
 
 // ── Mode ──────────────────────────────────────────────────────────
 ipcMain.handle('get-mode', () => storeGet('mode'))

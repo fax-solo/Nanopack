@@ -53,6 +53,14 @@ export interface AppSettings {
   maxThreads: number
 }
 
+export interface UpdateState {
+  state: 'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'downloaded' | 'error'
+  version?: string
+  downloadedVersion?: string
+  progress?: number
+  message?: string
+}
+
 const api = {
   // Settings
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:getAll'),
@@ -95,6 +103,18 @@ const api = {
   getDownloads: (): Promise<DownloadTask[]> => ipcRenderer.invoke('download:list'),
 
   ensureModel: (): Promise<{ needed: boolean; task?: DownloadTask }> => ipcRenderer.invoke('ensure-model'),
+
+  // Updates
+  getVersion: (): Promise<string> => ipcRenderer.invoke('get-version'),
+  checkUpdate: (): Promise<UpdateState> => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<UpdateState> => ipcRenderer.invoke('update:download'),
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+  getUpdateState: (): Promise<UpdateState> => ipcRenderer.invoke('update:state'),
+  onUpdateStatus: (callback: (state: UpdateState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state)
+    ipcRenderer.on('update-status', listener)
+    return () => ipcRenderer.removeListener('update-status', listener)
+  },
 
   onDownloadProgress: (callback: (task: DownloadTask) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, task: DownloadTask) => callback(task)

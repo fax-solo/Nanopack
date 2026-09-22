@@ -12,10 +12,20 @@
   let settings = $state<Settings | null>(null)
   let changed = $state(false)
   let themePreview = $state(false)
+  let version = $state('')
+  let updateStatus = $state<import('../../../preload/index').UpdateState | null>(null)
+  let updateBusy = $state(false)
 
   async function load() {
     settings = await window.nanopack.getSettings()
     applyTheme(settings.theme)
+    version = await window.nanopack.getVersion()
+    updateStatus = await window.nanopack.getUpdateState()
+    window.nanopack.onUpdateStatus((s) => {
+      updateStatus = s
+      if (s.state === 'error' || s.state === 'up-to-date') updateBusy = false
+      if (s.state === 'downloaded') updateBusy = false
+    })
   }
 
   function applyTheme(theme: 'dark' | 'light' | 'system') {
@@ -65,6 +75,20 @@
     if (!settings) return
     settings.defaultOutputDir = ''
     changed = true
+  }
+
+  async function checkUpdate() {
+    updateBusy = true
+    updateStatus = await window.nanopack.checkUpdate()
+  }
+
+  async function downloadUpdate() {
+    updateBusy = true
+    updateStatus = await window.nanopack.downloadUpdate()
+  }
+
+  async function installUpdate() {
+    await window.nanopack.installUpdate()
   }
 
   $effect(() => { load() })
@@ -162,6 +186,51 @@
       </div>
     </section>
 
+    <!-- Updates -->
+    <section class="settings-section">
+      <div class="section-title">Updates</div>
+
+      <div class="setting-row">
+        <div>
+          <div class="setting-label">Current version</div>
+          <div class="setting-desc">NanoPack {version}</div>
+        </div>
+        <div class="update-actions">
+          {#if updateStatus?.state === 'available'}
+            <button class="btn btn-secondary" onclick={downloadUpdate} disabled={updateBusy} style="font-size: 12px;">
+              Download Update
+            </button>
+          {:else if updateStatus?.state === 'downloading'}
+            <span class="update-status">Downloading… {updateStatus.progress ?? 0}%</span>
+          {:else if updateStatus?.state === 'downloaded'}
+            <button class="btn btn-primary" onclick={installUpdate} style="font-size: 12px;">
+              Restart &amp; Install
+            </button>
+          {:else if updateStatus?.state === 'checking'}
+            <span class="update-status">Checking…</span>
+          {:else}
+            <button class="btn btn-secondary" onclick={checkUpdate} disabled={updateBusy} style="font-size: 12px;">
+              Check for Updates
+            </button>
+          {/if}
+        </div>
+      </div>
+
+      {#if updateStatus}
+        <div class="setting-desc" style="padding-bottom: 4px;">
+          {#if updateStatus.state === 'up-to-date'}
+            {updateStatus.message || 'You are running the latest version.'}
+          {:else if updateStatus.state === 'available'}
+            Update {updateStatus.version} is available.
+          {:else if updateStatus.state === 'downloaded'}
+            Update {updateStatus.downloadedVersion} is ready to install.
+          {:else if updateStatus.state === 'error'}
+            Update check failed: {updateStatus.message}
+          {/if}
+        </div>
+      {/if}
+    </section>
+
     <!-- About -->
     <section class="settings-section">
       <div class="section-title">About</div>
@@ -171,7 +240,7 @@
           <div class="setting-label">NanoPack</div>
           <div class="setting-desc">Precision archiving</div>
         </div>
-        <div class="mono" style="color: var(--text-muted); font-size: 13px;">v1.1.0</div>
+        <div class="mono" style="color: var(--text-muted); font-size: 13px;">v{version}</div>
       </div>
     </section>
 
@@ -298,5 +367,15 @@
   }
   .select:focus {
     border-color: var(--accent);
+  }
+  .update-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .update-status {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
   }
 </style>

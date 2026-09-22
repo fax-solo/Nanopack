@@ -69,7 +69,10 @@ jobs:
 
             ### Windows
             - `NanoPack Setup ${{ steps.bump.outputs.VERSION }}.exe` — NSIS installer
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
           draft: false
           prerelease: false
         env:

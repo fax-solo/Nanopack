@@ -38,3 +38,9 @@ linux:
   category: Utility
 
 mac: null
+
+publish:
+  provider: github
+  owner: fax-solo
+  repo: Nanopack
+  releaseType: release

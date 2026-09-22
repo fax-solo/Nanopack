@@ -58,13 +58,40 @@ export interface NpkManifest {
   dedupMap: Record<string, string>
 }
 
+function vendorCandidates(): string[] {
+  const dirs: string[] = []
+  if (process.resourcesPath) {
+    // Packaged: electron-builder flattens vendor/${os}/ into resources/vendor/
+    dirs.push(path.join(process.resourcesPath, 'vendor'))
+  }
+  // Dev / tests: project vendor/<platform>/
+  dirs.push(path.join(__dirname, '../../../vendor', process.platform))
+  return dirs
+}
+
+function findVendorDir(): string {
+  for (const dir of vendorCandidates()) {
+    try {
+      if (fs.existsSync(dir)) return dir
+    } catch {}
+  }
+  return vendorCandidates()[0]
+}
+
 function getVendorPath(): string {
-  return path.join(process.resourcesPath || path.join(__dirname, '../../../vendor'), process.platform)
+  return findVendorDir()
 }
 
 function getBinary(name: string): string {
   const ext = process.platform === 'win32' ? '.exe' : ''
-  return path.join(getVendorPath(), `${name}${ext}`)
+  const binName = `${name}${ext}`
+  for (const dir of vendorCandidates()) {
+    const bin = path.join(dir, binName)
+    try {
+      if (fs.existsSync(bin)) return bin
+    } catch {}
+  }
+  return path.join(findVendorDir(), binName)
 }
 
 // Streaming SHA-256 for large-file memory safety (avoids loading entire file into a Buffer)
