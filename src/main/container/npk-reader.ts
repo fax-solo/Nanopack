@@ -1,8 +1,7 @@
 import fs from 'fs'
 import path from 'path'
-import { spawnSync } from 'child_process'
 import crypto from 'crypto'
-import { getBinary } from './npk-writer'
+import { getBinary, runProcess, CancelError } from './npk-writer'
 import type { NpkHeader, NpkManifest, ManifestEntry } from './npk-writer'
 import { safeJoin } from './safe-join'
 
@@ -48,10 +47,12 @@ function copyEntriesFromStaging(
   entries: ManifestEntry[],
   stagingDir: string,
   outputDir: string,
-  onProgress?: (stage: string, percent: number, file?: string) => void
+  onProgress?: (stage: string, percent: number, file?: string) => void,
+  signal?: AbortSignal
 ): string[] {
   const errors: string[] = []
   for (let i = 0; i < entries.length; i++) {
+    if (signal?.aborted) throw new CancelError()
     const entry = entries[i]
     const destPath = safeJoin(outputDir, entry.path)
     if (!destPath) {
@@ -70,22 +71,31 @@ function copyEntriesFromStaging(
   return errors
 }
 
-function copyDataSection(filePath: string, offset: number, size: number, destPath: string): Promise<void> {
+function copyDataSection(filePath: string, offset: number, size: number, destPath: string, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const reader = fs.createReadStream(filePath, { start: offset, end: offset + size - 1 })
     const writer = fs.createWriteStream(destPath)
+    const onAbort = () => {
+      reader.destroy()
+      writer.destroy()
+      reject(new CancelError())
+    }
+    if (signal?.aborted) { onAbort(); return }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    const cleanup = () => signal?.removeEventListener('abort', onAbort)
     reader.pipe(writer)
     reader.on('end', () => writer.end())
-    writer.on('finish', () => resolve())
-    reader.on('error', reject)
-    writer.on('error', reject)
+    writer.on('finish', () => { cleanup(); resolve() })
+    reader.on('error', (e) => { cleanup(); reject(e) })
+    writer.on('error', (e) => { cleanup(); reject(e) })
   })
 }
 
 export async function extractNpk(
   npkPath: string,
   outputDir: string,
-  onProgress?: (stage: string, percent: number, file?: string) => void
+  onProgress?: (stage: string, percent: number, file?: string) => void,
+  signal?: AbortSignal
 ): Promise<{ success: boolean; filesProcessed: number; errors: string[] }> {
   const manifest = readNpkManifest(npkPath)
   const header = readNpkHeader(npkPath)
@@ -97,9 +107,9 @@ export async function extractNpk(
     const dwarfsextract = getBinary('dwarfsextract')
     const stagingDir = fs.mkdtempSync('npk-extract-')
     try {
-      const result = spawnSync(dwarfsextract, ['-i', npkPath, '-o', stagingDir], { stdio: 'pipe' })
-      if (result.status !== 0) throw new Error(`dwarfsextract failed: ${result.stderr.toString()}`)
-      errors.push(...copyEntriesFromStaging(manifest.entries, stagingDir, outputDir, onProgress))
+      const result = await runProcess(dwarfsextract, ['-i', npkPath, '-o', stagingDir], signal)
+      if (result.code !== 0) throw new Error(`dwarfsextract failed: ${result.stderr.toString()}`)
+      errors.push(...copyEntriesFromStaging(manifest.entries, stagingDir, outputDir, onProgress, signal))
     } finally {
       try { fs.rmSync(stagingDir, { recursive: true, force: true }) } catch {}
     }
@@ -110,12 +120,12 @@ export async function extractNpk(
     const tempTar = path.join(outputDir, '..', `_npk_temp_${tag}.tar`)
     const stagingDir = fs.mkdtempSync('npk-extract-')
     try {
-      await copyDataSection(npkPath, header.dataOffset, header.dataSize, tempData)
-      const zstdResult = spawnSync(zstd, ['-d', '-o', tempTar, tempData], { stdio: 'pipe' })
-      if (zstdResult.status !== 0) throw new Error(`zstd decompress failed: ${zstdResult.stderr.toString()}`)
-      const tarResult = spawnSync('tar', ['xf', tempTar, '-C', stagingDir], { stdio: 'pipe' })
-      if (tarResult.status !== 0) throw new Error(`tar extract failed: ${tarResult.stderr.toString()}`)
-      errors.push(...copyEntriesFromStaging(manifest.entries, stagingDir, outputDir, onProgress))
+      await copyDataSection(npkPath, header.dataOffset, header.dataSize, tempData, signal)
+      const zstdResult = await runProcess(zstd, ['-d', '-o', tempTar, tempData], signal)
+      if (zstdResult.code !== 0) throw new Error(`zstd decompress failed: ${zstdResult.stderr.toString()}`)
+      const tarResult = await runProcess('tar', ['xf', tempTar, '-C', stagingDir], signal)
+      if (tarResult.code !== 0) throw new Error(`tar extract failed: ${tarResult.stderr.toString()}`)
+      errors.push(...copyEntriesFromStaging(manifest.entries, stagingDir, outputDir, onProgress, signal))
     } finally {
       try { fs.rmSync(tempTar, { force: true }) } catch {}
       try { fs.rmSync(tempData, { force: true }) } catch {}

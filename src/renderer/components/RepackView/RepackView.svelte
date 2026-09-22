@@ -35,6 +35,10 @@
     const r = await window.nanopack.repack(npkPath, sourcePath, outPath, mode)
     unsub()
     result = r; working = false
+    if (r.cancelled) logs = [...logs, { text: 'Operation cancelled by user', type: 'done' }]
+  }
+  async function cancelRepack() {
+    await window.nanopack.cancelOperation()
   }
   function reset() { npkPath = ''; sourcePath = ''; outputPath = ''; result = null; logs = [] }
 </script>
@@ -70,7 +74,9 @@
       <button class="btn btn-primary" onclick={runRepack} disabled={working}>
         {working ? 'Repacking...' : '🔄 Repack'}
       </button>
-      <button class="btn btn-secondary" onclick={reset}>Cancel</button>
+      <button class="btn btn-secondary" onclick={working ? cancelRepack : reset}>
+        {working ? 'Cancel' : 'Reset'}
+      </button>
     </div>
   {/if}
 
@@ -89,11 +95,11 @@
   {#if result}
     <ResultCard
       success={result.success}
-      title={result.success ? 'Repack complete' : 'Repack failed'}
-      subtitle={result.success ? `${result.filesProcessed} files processed` : undefined}
+      title={result.cancelled ? 'Repack cancelled' : result.success ? 'Repack complete' : 'Repack failed'}
+      subtitle={result.cancelled ? undefined : result.success ? `${result.filesProcessed} files processed` : undefined}
         originalSize={result.originalSize}
         finalSize={result.finalSize}
-      message={result.success ? undefined : result.message}
+      message={result.success || result.cancelled ? undefined : result.message}
       path={result.path}
     />
   {/if}

@@ -10,7 +10,7 @@
   let estimating = $state(false)
   let packing = $state(false)
   let estimate: { quickSize: number; deepSize: number; quickTime: number; deepTime: number; fileCount: number; totalSize: number } | null = $state(null)
-  let result: { success: boolean; path?: string; originalSize?: number; finalSize?: number; filesProcessed?: number; message?: string } | null = $state(null)
+  let result: { success: boolean; cancelled?: boolean; path?: string; originalSize?: number; finalSize?: number; filesProcessed?: number; message?: string } | null = $state(null)
   let progress = $state({ stage: '', percent: 0, processed: 0, total: 0, currentFile: '' })
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
 
@@ -43,7 +43,11 @@
     unsub()
     result = r
     packing = false
-    if (r.success) logs = [...logs, { text: `Done — saved ${r.filesProcessed} files`, type: 'done' }]
+    if (r.cancelled) logs = [...logs, { text: 'Operation cancelled by user', type: 'done' }]
+    else if (r.success) logs = [...logs, { text: `Done — saved ${r.filesProcessed} files`, type: 'done' }]
+  }
+  async function cancelPack() {
+    await window.nanopack.cancelOperation()
   }
   function reset() {
     sourcePath = ''; outputPath = ''; estimate = null; result = null; logs = []
@@ -101,7 +105,9 @@
         <button class="btn btn-primary" onclick={runPack} disabled={packing}>
           {packing ? 'Packing...' : mode === 'deep' ? '🚀 Pack Deep' : '🚀 Pack Quick'}
         </button>
-        <button class="btn btn-secondary" onclick={reset}>Cancel</button>
+        <button class="btn btn-secondary" onclick={packing ? cancelPack : reset}>
+          {packing ? 'Cancel' : 'Reset'}
+        </button>
       </div>
     </div>
   {/if}
@@ -119,14 +125,14 @@
   {/if}
 
   {#if result}
-    <ResultCard
+<ResultCard
       success={result.success}
-      title={result.success ? 'Pack complete' : 'Pack failed'}
-      subtitle={result.success ? `${result.filesProcessed} files processed` : undefined}
+      title={result.cancelled ? 'Pack cancelled' : result.success ? 'Pack complete' : 'Pack failed'}
+      subtitle={result.cancelled ? undefined : result.success ? `${result.filesProcessed} files processed` : undefined}
         originalSize={result.originalSize}
         finalSize={result.finalSize}
-        message={result.success ? undefined : result.message}
-        path={result.path}
+      message={result.success || result.cancelled ? undefined : result.message}
+      path={result.path}
     />
   {/if}
 </div>

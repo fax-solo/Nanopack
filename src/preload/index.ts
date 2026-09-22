@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 export interface NpkResult {
   success: boolean
+  cancelled?: boolean
   path?: string
   originalSize?: number
   finalSize?: number
@@ -80,6 +81,8 @@ const api = {
   ]),
   revealPath: (p: string): Promise<boolean> => ipcRenderer.invoke('reveal-path', p),
   openPath: (p: string): Promise<boolean> => ipcRenderer.invoke('open-path', p),
+
+  cancelOperation: (): Promise<void> => ipcRenderer.invoke('cancel-operation'),
 
   // Services
   pack: (inputPath: string, outputPath: string, mode: 'quick' | 'deep'): Promise<NpkResult> =>

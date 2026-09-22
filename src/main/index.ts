@@ -13,10 +13,24 @@ import { upscaleVideo, detectGpu } from './services/upscale-service'
 import { startDownload, cancelDownload, setProgressCallback, getDownloads } from './services/download-service'
 import { modelExists, getModelDownloadInfo } from './utils/model-download'
 import { initStore, get as storeGet, set as storeSet, getAll as storeGetAll } from './store'
+import { CancelError } from './container/npk-writer'
 import { checkForUpdates, downloadUpdate, quitAndInstall, getUpdateState, silentCheckForUpdates } from './update'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
+
+let currentAbort: AbortController | null = null
+
+function beginOperation(): AbortSignal {
+  currentAbort?.abort()
+  const controller = new AbortController()
+  currentAbort = controller
+  return controller.signal
+}
+
+function endOperation(controller: AbortController) {
+  if (currentAbort === controller) currentAbort = null
+}
 
 function sendProgress(stage: string, percent: number, processed: number = 0, total: number = 0, currentFile?: string) {
   mainWindow?.webContents.send('progress', { stage, percent, processed, total, currentFile })
@@ -127,6 +141,8 @@ ipcMain.handle('update:download', () => downloadUpdate())
 ipcMain.handle('update:install', () => quitAndInstall())
 ipcMain.handle('update:state', () => getUpdateState())
 
+ipcMain.handle('cancel-operation', () => { currentAbort?.abort() })
+
 // ── Mode ──────────────────────────────────────────────────────────
 ipcMain.handle('get-mode', () => storeGet('mode'))
 ipcMain.handle('set-mode', (_event, mode: 'quick' | 'deep') => {
@@ -180,14 +196,19 @@ ipcMain.handle('open-path', async (_event, p: string) => {
 
 // ── Services ───────────────────────────────────────────────────────
 ipcMain.handle('pack', async (_event, inputPath: string, outputPath: string, mode: 'quick' | 'deep') => {
+  const controller = new AbortController()
+  const signal = beginOperation()
   try {
     const threads = storeGet('maxThreads')
     const result = await packFiles(inputPath, outputPath, mode, (stage, percent, file) => {
       sendProgress(stage, percent, Math.round(percent), 100, file)
-    }, threads)
+    }, threads, signal)
     return result
   } catch (e: any) {
+    if (signal.aborted) return { success: false, cancelled: true, message: 'Cancelled' }
     return { success: false, message: e.message }
+  } finally {
+    endOperation(controller)
   }
 })
 
@@ -197,13 +218,18 @@ ipcMain.handle('estimate', async (_event, inputPath: string) => {
 })
 
 ipcMain.handle('unpack', async (_event, npkPath: string, outputDir: string) => {
+  const controller = new AbortController()
+  const signal = beginOperation()
   try {
     const result = await unpackArchive(npkPath, outputDir, (stage, percent, file) => {
       sendProgress(stage, percent, Math.round(percent), 100, file)
-    })
+    }, signal)
     return { success: result.success, filesProcessed: result.filesProcessed, path: outputDir, errors: result.errors }
   } catch (e: any) {
+    if (signal.aborted) return { success: false, cancelled: true, message: 'Cancelled', errors: ['Cancelled'] }
     return { success: false, message: e.message, errors: [e.message] }
+  } finally {
+    endOperation(controller)
   }
 })
 
@@ -245,14 +271,19 @@ ipcMain.handle('verify', async (_event, npkPath: string) => {
 })
 
 ipcMain.handle('repack', async (_event, npkPath: string, sourceDir: string, outputPath: string, mode: 'quick' | 'deep') => {
+  const controller = new AbortController()
+  const signal = beginOperation()
   try {
     const threads = storeGet('maxThreads')
     const result = await repackArchive(npkPath, sourceDir, outputPath, mode, (stage, percent, file) => {
       sendProgress(stage, percent, Math.round(percent), 100, file)
-    }, threads)
+    }, threads, signal)
     return result
   } catch (e: any) {
+    if (signal.aborted) return { success: false, cancelled: true, message: 'Cancelled' }
     return { success: false, message: e.message }
+  } finally {
+    endOperation(controller)
   }
 })
 

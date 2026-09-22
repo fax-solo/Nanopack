@@ -9,7 +9,7 @@
   let working = $state(false)
   let mountPath = $state('')
   let isWindows = $state(false)
-  let result: { success: boolean; path?: string; filesProcessed?: number; errors?: string[]; message?: string } | null = $state(null)
+  let result: { success: boolean; cancelled?: boolean; path?: string; filesProcessed?: number; errors?: string[]; message?: string } | null = $state(null)
   let verifyResult: { success: boolean; message?: string } | null = $state(null)
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
 
@@ -32,6 +32,10 @@
     const r = await window.nanopack.unpack(npkPath, outputDir)
     unsub()
     result = r; working = false
+    if (r.cancelled) logs = [...logs, { text: 'Operation cancelled by user', type: 'done' }]
+  }
+  async function cancelOperation() {
+    await window.nanopack.cancelOperation()
   }
   async function runMount() {
     if (!npkPath) return
@@ -121,6 +125,9 @@
 
   {#if working}
     <div class="working-indicator"><div class="wi-bar"></div></div>
+    <div>
+      <button class="btn btn-danger" onclick={cancelOperation}>Cancel</button>
+    </div>
   {/if}
 
   {#if logs.length > 0}
@@ -134,9 +141,9 @@
   {#if result}
     <ResultCard
       success={result.success}
-      title={result.success ? 'Unpack complete' : 'Unpack failed'}
-      subtitle={result.success ? `${result.filesProcessed} files extracted` : undefined}
-      message={result.success ? undefined : result.errors?.join(', ')}
+      title={result.cancelled ? 'Unpack cancelled' : result.success ? 'Unpack complete' : 'Unpack failed'}
+      subtitle={result.cancelled ? undefined : result.success ? `${result.filesProcessed} files extracted` : undefined}
+      message={result.success || result.cancelled ? undefined : result.errors?.join(', ')}
       path={result.path}
     />
   {/if}

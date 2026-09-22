@@ -1,12 +1,54 @@
 import fs from 'fs'
 import path from 'path'
-import { spawnSync, spawn } from 'child_process'
+import { spawn } from 'child_process'
 import crypto from 'crypto'
 import { streamHashFile } from './stream-hash'
 
 const MAGIC_QUICK = 0x4E504B01
 const MAGIC_DEEP = 0x4E504B02
 const HEADER_SIZE = 4096
+
+export class CancelError extends Error {
+  constructor() {
+    super('Operation cancelled')
+    this.name = 'CancelError'
+  }
+}
+
+// Async spawn that lets an AbortSignal kill the child mid-run. Unlike spawnSync,
+// this never blocks the Electron main process, so the UI stays responsive and a
+// Cancel click can actually interrupt a long compression.
+function runProcess(
+  command: string,
+  args: string[],
+  signal?: AbortSignal,
+): Promise<{ code: number | null; stdout: Buffer; stderr: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: 'pipe' })
+    let stdout = Buffer.alloc(0)
+    let stderr = Buffer.alloc(0)
+    const onAbort = () => { try { child.kill('SIGKILL') } catch {} }
+    if (signal) {
+      if (signal.aborted) {
+        onAbort()
+        reject(new CancelError())
+        return
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
+    child.stdout?.on('data', (c) => { stdout = Buffer.concat([stdout, c]) })
+    child.stderr?.on('data', (c) => { stderr = Buffer.concat([stderr, c]) })
+    child.on('error', (err) => {
+      signal?.removeEventListener('abort', onAbort)
+      reject(signal?.aborted ? new CancelError() : err)
+    })
+    child.on('close', (code) => {
+      signal?.removeEventListener('abort', onAbort)
+      if (signal?.aborted) reject(new CancelError())
+      else resolve({ code, stdout, stderr })
+    })
+  })
+}
 
 /* NPK header byte layout (v2, 112 bytes + 3984 padding = 4096):
    Offset  Size  Field         Type
@@ -116,7 +158,8 @@ export async function writeNpk(
   outputPath: string,
   mode: 'quick' | 'deep',
   onProgress?: (stage: string, percent: number, file?: string) => void,
-  maxThreads = 0
+  maxThreads = 0,
+  signal?: AbortSignal
 ): Promise<{ success: boolean; filesProcessed: number; originalSize: number; finalSize: number }> {
   const files: string[] = []
   function walkDir(dir: string) {
@@ -144,6 +187,7 @@ export async function writeNpk(
   let originalSize = 0
 
   for (let i = 0; i < files.length; i++) {
+    if (signal?.aborted) throw new CancelError()
     const filePath = files[i]
     const stats = fs.statSync(filePath)
     const hash = await sha256File(filePath)
@@ -190,78 +234,88 @@ export async function writeNpk(
         '-l', '6',
       ]
       if (maxThreads > 0) args.push('-p', String(maxThreads))
-      const dwarfsResult = spawnSync(dwarfs, args, { stdio: 'pipe' })
-      if (dwarfsResult.status !== 0) throw new Error(`mkdwarfs failed: ${dwarfsResult.stderr.toString()}`)
+      const dwarfsResult = await runProcess(dwarfs, args, signal)
+      if (dwarfsResult.code !== 0) throw new Error(`mkdwarfs failed: ${dwarfsResult.stderr.toString()}`)
     } else {
       dataPath = path.join(tempDir, 'data.zst')
       const zstd = getBinary('zstd')
       const tempTar = path.join(tempDir, 'data.tar')
-      const tarResult = spawnSync('tar', ['cf', tempTar, '-C', sourceDir, '.'], { stdio: 'pipe' })
-      if (tarResult.status !== 0) throw new Error(`tar failed: ${tarResult.stderr.toString()}`)
-      const zstdResult = spawnSync(zstd, ['-3', '-f', `-T${maxThreads || 0}`, '-o', dataPath, tempTar], { stdio: 'pipe' })
-      if (zstdResult.status !== 0) throw new Error(`zstd compress failed: ${zstdResult.stderr.toString()}`)
+      const tarResult = await runProcess('tar', ['cf', tempTar, '-C', sourceDir, '.'], signal)
+      if (tarResult.code !== 0) throw new Error(`tar failed: ${tarResult.stderr.toString()}`)
+      const zstdResult = await runProcess(zstd, ['-3', '-f', `-T${maxThreads || 0}`, '-o', dataPath, tempTar], signal)
+      if (zstdResult.code !== 0) throw new Error(`zstd compress failed: ${zstdResult.stderr.toString()}`)
       try { fs.rmSync(tempTar, { force: true }) } catch {}
     }
 
     const dataStat = fs.statSync(dataPath)
     dataSize = dataStat.size
     manifest.totalCompressedSize = dataSize
+
+    onProgress?.('Writing archive...', 95)
+
+    const manifestFinal = Buffer.from(JSON.stringify(manifest))
+
+    const dataOffset = HEADER_SIZE + manifestFinal.length
+    const header: NpkHeader = {
+      magic: mode === 'deep' ? MAGIC_DEEP : MAGIC_QUICK,
+      manifestOffset: HEADER_SIZE,
+      manifestSize: manifestFinal.length,
+      dataOffset,
+      dataSize,
+      flags: 0,
+      mode: mode === 'deep' ? 1 : 0,
+      fileCount: files.length,
+      originalSize,
+      dataHash: '',
+      padding: Buffer.alloc(HEADER_SIZE - 112),
+    }
+
+    const headerBuf = Buffer.alloc(HEADER_SIZE)
+    headerBuf.writeUInt32BE(header.magic, 0)
+    headerBuf.writeUInt32BE(HEADER_SIZE, 4)
+    headerBuf.writeBigUInt64BE(BigInt(manifestFinal.length), 8)
+    headerBuf.writeBigUInt64BE(BigInt(dataOffset), 16)
+    headerBuf.writeBigUInt64BE(BigInt(dataSize), 24)
+    headerBuf.writeUInt16BE(header.flags, 32)
+    headerBuf.writeUInt8(header.mode, 34)
+    headerBuf.writeUInt32BE(header.fileCount, 36)
+    headerBuf.writeBigUInt64BE(BigInt(originalSize), 40)
+
+    // Streaming SHA-256 hash of compressed data (memory-safe for large archives)
+    const dataHash = await streamHashFile(dataPath)
+
+    headerBuf.write(dataHash, 48, 64, 'ascii')
+
+    const outFile = fs.createWriteStream(outputPath)
+    outFile.write(headerBuf)
+    outFile.write(manifestFinal)
+
+    // Stream-copy compressed data into output (no full-file Buffer)
+    const dataStream = fs.createReadStream(dataPath)
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        dataStream.destroy()
+        outFile.destroy()
+        reject(new CancelError())
+      }
+      if (signal?.aborted) { onAbort(); return }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      const cleanup = () => signal?.removeEventListener('abort', onAbort)
+      dataStream.pipe(outFile, { end: false })
+      dataStream.on('end', () => { cleanup(); outFile.end(); resolve() })
+      dataStream.on('error', (e) => { cleanup(); reject(e) })
+      outFile.on('error', (e) => { cleanup(); reject(e) })
+    })
+  } catch (e) {
+    if (e instanceof CancelError) {
+      try { fs.rmSync(outputPath, { force: true }) } catch {}
+    }
+    throw e
   } finally {
-    // tempDir cleanup happens after writing
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    } catch {}
   }
-
-  onProgress?.('Writing archive...', 95)
-
-  const manifestFinal = Buffer.from(JSON.stringify(manifest))
-
-  const dataOffset = HEADER_SIZE + manifestFinal.length
-  const header: NpkHeader = {
-    magic: mode === 'deep' ? MAGIC_DEEP : MAGIC_QUICK,
-    manifestOffset: HEADER_SIZE,
-    manifestSize: manifestFinal.length,
-    dataOffset,
-    dataSize,
-    flags: 0,
-    mode: mode === 'deep' ? 1 : 0,
-    fileCount: files.length,
-    originalSize,
-    dataHash: '',
-    padding: Buffer.alloc(HEADER_SIZE - 112),
-  }
-
-  const headerBuf = Buffer.alloc(HEADER_SIZE)
-  headerBuf.writeUInt32BE(header.magic, 0)
-  headerBuf.writeUInt32BE(HEADER_SIZE, 4)
-  headerBuf.writeBigUInt64BE(BigInt(manifestFinal.length), 8)
-  headerBuf.writeBigUInt64BE(BigInt(dataOffset), 16)
-  headerBuf.writeBigUInt64BE(BigInt(dataSize), 24)
-  headerBuf.writeUInt16BE(header.flags, 32)
-  headerBuf.writeUInt8(header.mode, 34)
-  headerBuf.writeUInt32BE(header.fileCount, 36)
-  headerBuf.writeBigUInt64BE(BigInt(originalSize), 40)
-
-  // Streaming SHA-256 hash of compressed data (memory-safe for large archives)
-  const dataHash = await streamHashFile(dataPath)
-
-  headerBuf.write(dataHash, 48, 64, 'ascii')
-
-  const outFile = fs.createWriteStream(outputPath)
-  outFile.write(headerBuf)
-  outFile.write(manifestFinal)
-
-  // Stream-copy compressed data into output (no full-file Buffer)
-  const dataStream = fs.createReadStream(dataPath)
-  await new Promise<void>((resolve, reject) => {
-    dataStream.pipe(outFile, { end: false })
-    dataStream.on('end', () => { outFile.end(); resolve() })
-    dataStream.on('error', reject)
-    outFile.on('error', reject)
-  })
-
-  // Cleanup
-  try {
-    fs.rmSync(tempDir, { recursive: true, force: true })
-  } catch {}
 
   onProgress?.('Done', 100)
 
@@ -274,4 +328,4 @@ export async function writeNpk(
   }
 }
 
-export { getBinary, sha256File, getFileType }
+export { getBinary, sha256File, getFileType, runProcess }

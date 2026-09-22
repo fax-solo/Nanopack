@@ -149,10 +149,11 @@ export async function packFiles(
   outputPath: string,
   mode: 'quick' | 'deep',
   onProgress?: (stage: string, percent: number, file?: string) => void,
-  maxThreads = 0
+  maxThreads = 0,
+  signal?: AbortSignal
 ) {
   if (mode === 'quick') requireTar()
-  return writeNpk(inputPath, outputPath, mode, onProgress, maxThreads)
+  return writeNpk(inputPath, outputPath, mode, onProgress, maxThreads, signal)
 }
 
 export async function estimatePack(
@@ -189,12 +190,13 @@ export async function estimatePack(
 export async function unpackArchive(
   npkPath: string,
   outputDir: string,
-  onProgress?: (stage: string, percent: number, file?: string) => void
+  onProgress?: (stage: string, percent: number, file?: string) => void,
+  signal?: AbortSignal
 ) {
   const { extractNpk, readNpkManifest } = await import('../container/npk-reader')
   const manifest = readNpkManifest(npkPath)
   if (manifest.mode === 'quick') requireTar()
-  return extractNpk(npkPath, outputDir, onProgress)
+  return extractNpk(npkPath, outputDir, onProgress, signal)
 }
 
 export async function mountArchive(

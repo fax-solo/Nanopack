@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { readNpkManifest, readNpkHeader } from './npk-reader'
 import { streamHashFile } from './stream-hash'
-import { writeNpk } from './npk-writer'
+import { writeNpk, CancelError } from './npk-writer'
 
 export async function repackNpk(
   npkPath: string,
@@ -10,7 +10,8 @@ export async function repackNpk(
   outputPath: string,
   mode: 'quick' | 'deep',
   onProgress?: (stage: string, percent: number, file?: string) => void,
-  maxThreads = 0
+  maxThreads = 0,
+  signal?: AbortSignal
 ): Promise<{ success: boolean; filesProcessed: number; originalSize: number; finalSize: number }> {
   const oldManifest = readNpkManifest(npkPath)
   const oldHeader = readNpkHeader(npkPath)
@@ -36,6 +37,7 @@ export async function repackNpk(
   const unchanged: string[] = []
 
   for (const [relPath, fullPath] of currentFiles) {
+    if (signal?.aborted) throw new CancelError()
     const oldEntry = oldEntriesMap.get(relPath)
     if (!oldEntry) {
       added.push(relPath)
@@ -75,7 +77,7 @@ export async function repackNpk(
 
   const result = await writeNpk(sourceDir, outputPath, mode, (stage, pct, file) => {
     onProgress?.(stage, 30 + Math.round(pct * 0.65), file)
-  }, maxThreads)
+  }, maxThreads, signal)
 
   onProgress?.('Done', 100)
 
