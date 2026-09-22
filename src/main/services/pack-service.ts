@@ -15,10 +15,15 @@ export interface EstimateResult {
   totalSize: number
 }
 
-const SAMPLE_BUDGET = 16 * 1024 * 1024
-const SAMPLE_MAX_FILES = 40
+const SAMPLE_MAX_FILES = 60
 const QUICK_LEVEL = 3
 const DEEP_LEVEL = 19
+
+function clampRatio(r: number): number {
+  if (r > 1) return 1
+  if (r < 0.001) return 0.001
+  return r
+}
 
 function walkDirFiles(dir: string): string[] {
   const files: string[] = []
@@ -50,47 +55,92 @@ function zstdCompress(dataPath: string, level: number, threads: number, outPath:
   return { ms, bytes }
 }
 
-function sampleCompression(files: string[], threads: number): { quickRatio: number; deepRatio: number; quickMs: number; deepMs: number; sampleSize: number } {
-  const sampled: { rel: string; src: string; size: number }[] = []
-  let budget = SAMPLE_BUDGET
-  for (const f of files) {
-    const size = fs.statSync(f).size
-    if (size <= 0) continue
-    if (sampled.length >= SAMPLE_MAX_FILES) break
-    sampled.push({ rel: path.basename(f) + '_' + sampled.length, src: f, size })
-    budget -= size
-    if (budget <= 0) break
-  }
-  const sampleSize = sampled.reduce((s, x) => s + x.size, 0)
+interface CompressionEstimate {
+  quickSize: number
+  deepSize: number
+  quickTime: number
+  deepTime: number
+  sampleSize: number
+}
 
-  if (sampled.length === 0 || sampleSize === 0) {
-    return { quickRatio: 0.7, deepRatio: 0.5, quickMs: 100, deepMs: 200, sampleSize: 0 }
+function sampleCompression(files: string[], threads: number): CompressionEstimate {
+  // Per-file size-bucketed estimation. We compress a spread of files (small to
+  // large) individually, then assign EVERY file the ratio of the sampled file
+  // nearest to it in size. Files of similar size tend to share a content type
+  // (small = text/config, large = game assets), so this tracks real output far
+  // better than applying one global ratio from a path-sorted sample.
+  const stats = files
+    .map((f) => { const size = fs.statSync(f).size; return { f, size } })
+    .filter((s) => s.size > 0)
+  stats.sort((a, b) => a.size - b.size)
+
+  if (stats.length === 0) {
+    return { quickSize: 0, deepSize: 0, quickTime: 0, deepTime: 0, sampleSize: 0 }
   }
+
+  const target = Math.min(SAMPLE_MAX_FILES, stats.length)
+  const pickSet = new Set<number>()
+  for (let k = 0; k < target; k++) {
+    pickSet.add(Math.round((k / target) * (stats.length - 1)))
+  }
+  pickSet.add(stats.length - 1)
+  const picks = [...pickSet].sort((a, b) => a - b)
+
+  const qRatio = new Map<number, number>()
+  const dRatio = new Map<number, number>()
+  let sampleSize = 0
+  let quickMs = 0
+  let deepMs = 0
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'npk-estimate-'))
   try {
-    // Flat copy of sampled content — tar preserves identical-file dedup which is a bonus, not a flaw.
     const flatDir = path.join(tmpDir, 'flat')
     fs.mkdirSync(flatDir)
-    for (const s of sampled) {
-      fs.copyFileSync(s.src, path.join(flatDir, s.rel))
-    }
-    const tarPath = path.join(tmpDir, 'sample.tar')
-    const tar = spawnSync('tar', ['cf', tarPath, '-C', flatDir, '.'], { stdio: 'pipe', timeout: 60_000 })
-    if (tar.status !== 0) throw new Error(`tar sampling failed: ${tar.stderr?.toString()}`)
+    for (const idx of picks) {
+      const s = stats[idx]
+      const copy = path.join(flatDir, `f_${idx}.bin`)
+      fs.copyFileSync(s.f, copy)
 
-    const quick = zstdCompress(tarPath, QUICK_LEVEL, threads, path.join(tmpDir, 'q.zst'))
-    const deep = zstdCompress(tarPath, DEEP_LEVEL, threads, path.join(tmpDir, 'd.zst'))
+      const rq = zstdCompress(copy, QUICK_LEVEL, threads, path.join(tmpDir, `q_${idx}.zst`))
+      qRatio.set(idx, clampRatio(rq.bytes / s.size))
+      quickMs += rq.ms
 
-    return {
-      quickRatio: quick.bytes / fs.statSync(tarPath).size,
-      deepRatio: deep.bytes / fs.statSync(tarPath).size,
-      quickMs: quick.ms,
-      deepMs: deep.ms,
-      sampleSize,
+      const rd = zstdCompress(copy, DEEP_LEVEL, threads, path.join(tmpDir, `d_${idx}.zst`))
+      dRatio.set(idx, clampRatio(rd.bytes / s.size))
+      deepMs += rd.ms
+
+      sampleSize += s.size
     }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true })
+  }
+
+  // tar format adds ~512 bytes of header/padding per file to the final archive.
+  const tarOverhead = stats.length * 512
+
+  let quickSize = tarOverhead
+  let deepSize = tarOverhead
+  for (let i = 0; i < stats.length; i++) {
+    let bestIdx = picks[0]
+    let bestDist = Infinity
+    for (const p of picks) {
+      const dist = Math.abs(stats[p].size - stats[i].size)
+      if (dist < bestDist) { bestDist = dist; bestIdx = p }
+    }
+    quickSize += stats[i].size * qRatio.get(bestIdx)!
+    deepSize += stats[i].size * dRatio.get(bestIdx)!
+  }
+
+  const scale = stats.length === picks.length || sampleSize === 0
+    ? 1
+    : stats.reduce((sum, s) => sum + s.size, 0) / sampleSize
+
+  return {
+    quickSize,
+    deepSize,
+    quickTime: Math.max(2, (quickMs / 1000) * scale),
+    deepTime: Math.max(10, (deepMs / 1000) * scale),
+    sampleSize,
   }
 }
 
@@ -121,13 +171,11 @@ export async function estimatePack(
     if (s.sampleSize === 0 || totalSize === 0) {
       return { quickSize: 0, deepSize: 0, quickTime: 0, deepTime: 0, fileCount, totalSize }
     }
-    const scale = totalSize / s.sampleSize
-    const quickSize = Math.round(totalSize * s.quickRatio)
-    const deepSize = Math.round(totalSize * s.deepRatio)
-    const quickTime = Math.max(2, Math.round((s.quickMs / 1000) * scale))
-    const deepTime = Math.max(10, Math.round((s.deepMs / 1000) * scale))
+    // Never report a bigger archive than the source.
+    const quickSize = Math.min(totalSize, Math.round(s.quickSize))
+    const deepSize = Math.min(quickSize, Math.round(s.deepSize))
     onProgress?.('Estimation complete', 100)
-    return { quickSize, deepSize, quickTime, deepTime, fileCount, totalSize }
+    return { quickSize, deepSize, quickTime: s.quickTime, deepTime: s.deepTime, fileCount, totalSize }
   } catch {
     // Fall back to a reasonable heuristic if the toolchain is unavailable.
     const quickSize = Math.round(totalSize * 0.7)
