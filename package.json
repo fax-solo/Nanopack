@@ -2,6 +2,10 @@
   "name": "nanopack",
   "version": "1.0.6",
   "description": "Nano Pack",
+  "author": {
+    "name": "NanoPack Maintainers",
+    "email": "maintainers@nanopack.app"
+  },
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "npm run build:main && npm run build:preload && vite",
