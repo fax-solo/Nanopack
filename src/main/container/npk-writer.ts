@@ -4,8 +4,8 @@ import { spawn } from 'child_process'
 import crypto from 'crypto'
 import { streamHashFile } from './stream-hash'
 
-const MAGIC_QUICK = 0x4E504B01
-const MAGIC_DEEP = 0x4E504B02
+export const MAGIC_QUICK = 0x4E504B01
+export const MAGIC_DEEP = 0x4E504B02
 const HEADER_SIZE = 4096
 
 export class CancelError extends Error {

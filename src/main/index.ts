@@ -28,8 +28,8 @@ function beginOperation(): AbortSignal {
   return controller.signal
 }
 
-function endOperation(controller: AbortController) {
-  if (currentAbort === controller) currentAbort = null
+function endOperation() {
+  currentAbort = null
 }
 
 function sendProgress(stage: string, percent: number, processed: number = 0, total: number = 0, currentFile?: string) {
@@ -62,6 +62,17 @@ function createTray() {
   })
 }
 
+function readDevServerUrl(): string | null {
+  try {
+    const marker = path.join(__dirname, '../renderer/.vite-url')
+    if (!fs.existsSync(marker)) return null
+    const url = fs.readFileSync(marker, 'utf8').trim()
+    return /^https?:\/\//.test(url) ? url : null
+  } catch {
+    return null
+  }
+}
+
 function createWindow() {
   const { width, height } = storeGet('windowBounds')
 
@@ -89,7 +100,12 @@ function createWindow() {
     })
   })
 
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+  const devUrl = readDevServerUrl()
+  if (devUrl) {
+    mainWindow.loadURL(devUrl)
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+  }
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
@@ -196,7 +212,6 @@ ipcMain.handle('open-path', async (_event, p: string) => {
 
 // ── Services ───────────────────────────────────────────────────────
 ipcMain.handle('pack', async (_event, inputPath: string, outputPath: string, mode: 'quick' | 'deep') => {
-  const controller = new AbortController()
   const signal = beginOperation()
   try {
     const threads = storeGet('maxThreads')
@@ -208,7 +223,7 @@ ipcMain.handle('pack', async (_event, inputPath: string, outputPath: string, mod
     if (signal.aborted) return { success: false, cancelled: true, message: 'Cancelled' }
     return { success: false, message: e.message }
   } finally {
-    endOperation(controller)
+    endOperation()
   }
 })
 
@@ -218,7 +233,6 @@ ipcMain.handle('estimate', async (_event, inputPath: string) => {
 })
 
 ipcMain.handle('unpack', async (_event, npkPath: string, outputDir: string) => {
-  const controller = new AbortController()
   const signal = beginOperation()
   try {
     const result = await unpackArchive(npkPath, outputDir, (stage, percent, file) => {
@@ -229,7 +243,7 @@ ipcMain.handle('unpack', async (_event, npkPath: string, outputDir: string) => {
     if (signal.aborted) return { success: false, cancelled: true, message: 'Cancelled', errors: ['Cancelled'] }
     return { success: false, message: e.message, errors: [e.message] }
   } finally {
-    endOperation(controller)
+    endOperation()
   }
 })
 
@@ -271,7 +285,6 @@ ipcMain.handle('verify', async (_event, npkPath: string) => {
 })
 
 ipcMain.handle('repack', async (_event, npkPath: string, sourceDir: string, outputPath: string, mode: 'quick' | 'deep') => {
-  const controller = new AbortController()
   const signal = beginOperation()
   try {
     const threads = storeGet('maxThreads')
@@ -283,7 +296,7 @@ ipcMain.handle('repack', async (_event, npkPath: string, sourceDir: string, outp
     if (signal.aborted) return { success: false, cancelled: true, message: 'Cancelled' }
     return { success: false, message: e.message }
   } finally {
-    endOperation(controller)
+    endOperation()
   }
 })
 

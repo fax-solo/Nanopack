@@ -11,7 +11,7 @@
   let packing = $state(false)
   let estimate: { quickSize: number; deepSize: number; quickTime: number; deepTime: number; fileCount: number; totalSize: number } | null = $state(null)
   let result: { success: boolean; cancelled?: boolean; path?: string; originalSize?: number; finalSize?: number; filesProcessed?: number; message?: string } | null = $state(null)
-  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0, currentFile: '' })
+  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0 })
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
 
   async function selectFolder() {

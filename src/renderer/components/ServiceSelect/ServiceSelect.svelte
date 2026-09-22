@@ -106,7 +106,7 @@
     </div>
     {#if step !== 'content'}
       <div class="ss-steps">
-        <span class="ss-step" class:done={step !== 'content'}>Content</span>
+        <span class="ss-step" class:done={true}>Content</span>
         <span class="ss-arrow">→</span>
         <span class="ss-step" class:done={step === 'model'}>Operation</span>
         <span class="ss-arrow">→</span>

@@ -9,6 +9,7 @@ directories:
 files:
   - dist/**/*
   - package.json
+  - "!dist/renderer/.vite-url"
 
 extraResources:
   - from: vendor/${os}/

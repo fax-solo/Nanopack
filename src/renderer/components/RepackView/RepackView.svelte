@@ -8,9 +8,9 @@
   let sourcePath = $state('')
   let outputPath = $state('')
   let working = $state(false)
-  let result: { success: boolean; path?: string; originalSize?: number; finalSize?: number; filesProcessed?: number; message?: string } | null = $state(null)
+  let result: { success: boolean; cancelled?: boolean; path?: string; originalSize?: number; finalSize?: number; filesProcessed?: number; message?: string } | null = $state(null)
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
-  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0, currentFile: '' })
+  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0 })
 
   async function selectNpk() {
     const p = await window.nanopack.openNpkDialog()

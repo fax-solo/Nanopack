@@ -78,7 +78,7 @@ async function main() {
       log('Already installed')
     } else {
       // DwarFS provides a static universal binary
-      const url = 'https://github.com/mhx/dwarfs/releases/download/v0.15.4/dwarfs-universal-0.15.4-Linux-x86_64'
+      const url = 'https://github.com/mhx/dwarfs/releases/download/v0.15.5/dwarfs-universal-0.15.5-Linux-x86_64'
       const bin = path.join(CACHE, 'dwarfs-universal')
       dl(url, bin)
       fs.chmodSync(bin, 0o755)

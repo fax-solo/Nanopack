@@ -14,7 +14,7 @@
   let result: { success: boolean; path?: string; message?: string } | null = $state(null)
   let downloadingModel = $state(false)
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
-  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0, currentFile: '' })
+  let progress = $state({ stage: '', percent: 0, processed: 0, total: 0 })
 
   const presets = [
     { id: '480p-1080p', label: '480p → 1080p', desc: 'SD to HD, good uplift' },
@@ -63,7 +63,7 @@
         await new Promise<void>((resolve) => {
           const unsub = window.nanopack.onDownloadProgress((task) => {
             if (task.id === 'realesrgan-model') {
-              progress = { stage: `Downloading model (${task.progress}%)`, percent: task.progress, processed: 0, total: 0, currentFile: '' }
+              progress = { stage: `Downloading model (${task.progress}%)`, percent: task.progress, processed: 0, total: 0 }
               if (task.status === 'completed' || task.status === 'error') {
                 unsub()
                 downloadingModel = false

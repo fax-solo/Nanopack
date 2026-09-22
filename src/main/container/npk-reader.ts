@@ -1,9 +1,11 @@
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import { getBinary, runProcess, CancelError } from './npk-writer'
+import { getBinary, runProcess, CancelError, MAGIC_QUICK, MAGIC_DEEP } from './npk-writer'
 import type { NpkHeader, NpkManifest, ManifestEntry } from './npk-writer'
 import { safeJoin } from './safe-join'
+
+const SUPPORTED_MAGICS = [MAGIC_QUICK, MAGIC_DEEP]
 
 export function readNpkHeader(filePath: string): NpkHeader {
   const fd = fs.openSync(filePath, 'r')
@@ -11,10 +13,15 @@ export function readNpkHeader(filePath: string): NpkHeader {
   fs.readSync(fd, buf, 0, 4096, 0)
   fs.closeSync(fd)
 
+  const magic = buf.readUInt32BE(0)
+  if (!SUPPORTED_MAGICS.includes(magic)) {
+    throw new Error(`Not a valid .npk archive (unrecognized magic 0x${magic.toString(16).padStart(8, '0')}).`)
+  }
+
   const dataHashRaw = buf.subarray(48, 112).toString('ascii').replace(/\0+$/, '')
 
   return {
-    magic: buf.readUInt32BE(0),
+    magic,
     manifestOffset: buf.readUInt32BE(4),
     manifestSize: Number(buf.readBigUInt64BE(8)),
     dataOffset: Number(buf.readBigUInt64BE(16)),
@@ -32,6 +39,11 @@ const SUPPORTED_MANIFEST_VERSIONS = [1, 2]
 
 export function readNpkManifest(filePath: string): NpkManifest {
   const header = readNpkHeader(filePath)
+  const stat = fs.statSync(filePath)
+  if (header.manifestSize <= 0 || header.manifestSize > stat.size ||
+      header.manifestOffset + header.manifestSize > stat.size) {
+    throw new Error('Corrupt .npk archive: manifest size/offset out of bounds.')
+  }
   const buf = Buffer.alloc(header.manifestSize)
   const fd = fs.openSync(filePath, 'r')
   fs.readSync(fd, buf, 0, header.manifestSize, header.manifestOffset)
