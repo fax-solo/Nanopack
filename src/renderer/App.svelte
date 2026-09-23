@@ -6,12 +6,13 @@
   import UnpackView from './components/UnpackView/UnpackView.svelte'
   import RepackView from './components/RepackView/RepackView.svelte'
   import UpscaleView from './components/UpscaleView/UpscaleView.svelte'
+  import SlimView from './components/SlimView/SlimView.svelte'
   import SettingsView from './components/SettingsView/SettingsView.svelte'
   import DownloadBar from './components/DownloadBar.svelte'
   import Toast from './components/Toast.svelte'
   import { showToast } from './lib/toast.svelte'
 
-  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'settings'
+  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'slim' | 'settings'
 
   let activeService: Service = $state('home')
   let activeMode: 'quick' | 'deep' = $state('quick')
@@ -77,6 +78,8 @@
         <RepackView mode={activeMode} />
       {:else if activeService === 'upscale'}
         <UpscaleView engine={activeEngine} preset={activePreset} />
+      {:else if activeService === 'slim'}
+        <SlimView mode={activeMode} preset={activePreset} />
       {:else if activeService === 'settings'}
         <SettingsView />
       {/if}

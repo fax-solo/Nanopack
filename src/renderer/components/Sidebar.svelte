@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
 
-  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'settings'
+  type Service = 'home' | 'pack' | 'unpack' | 'repack' | 'upscale' | 'slim' | 'settings'
 
   let { activeService, mode }: {
     activeService: Service
@@ -15,6 +15,7 @@
     { id: 'pack', label: 'Pack', icon: '📦' },
     { id: 'unpack', label: 'Unpack', icon: '📂' },
     { id: 'repack', label: 'Repack', icon: '🔄' },
+    { id: 'slim', label: 'Slim', icon: '✂️' },
     { id: 'upscale', label: 'Upscale', icon: '🔍' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ]

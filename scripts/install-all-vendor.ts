@@ -208,6 +208,22 @@ async function main() {
     }
   }
 
+  // ───── 8. ffmpeg (Slim media repack) ──────────────────────────
+  console.log('8. ffmpeg (Slim: Opus/HEVC re-encoding)')
+  {
+    const t = path.join(VENDOR, 'ffmpeg' + EXT)
+    if (fs.existsSync(t)) { log('Already installed') }
+    else if (PLATFORM === 'linux' && RAW_PLATFORM === 'linux' && process.arch === 'x64') {
+      const url = 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz'
+      const arc = path.join(CACHE, 'ffmpeg-release-amd64-static.tar.xz')
+      dl(url, arc)
+      extractAndInstall(arc, ['ffmpeg'])
+    } else if (process.platform !== 'win32') {
+      log('Skipping bundling on this platform — Slim will use a system ffmpeg from PATH instead.')
+      log('(Windows/macOS: install ffmpeg via winget/brew, or drop an ffmpeg.exe/ffmpeg binary into the vendor folder.)')
+    }
+  }
+
   console.log('\n── Vendor install complete ──')
   console.log('All tools in:', VENDOR)
   console.log('')

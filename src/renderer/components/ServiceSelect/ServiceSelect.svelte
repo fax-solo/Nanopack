@@ -3,7 +3,7 @@
   import { fly } from 'svelte/transition'
 
   type ContentType = 'video' | 'files' | 'pictures'
-  type Service = 'pack' | 'unpack' | 'repack' | 'upscale'
+  type Service = 'pack' | 'unpack' | 'repack' | 'upscale' | 'slim'
 
   interface Model {
     id: string
@@ -21,8 +21,8 @@
   let selectedService: Service | null = $state(null)
 
   const contentTypes: { id: ContentType; label: string; icon: string; bg: string; services: Service[] }[] = [
-    { id: 'video', label: 'Video', icon: '🎬', bg: 'linear-gradient(135deg, #1a2a3a, #0f1a24)', services: ['pack', 'upscale', 'unpack', 'repack'] },
-    { id: 'files', label: 'Files', icon: '📁', bg: 'linear-gradient(135deg, #1a2a1a, #0f1a0f)', services: ['pack', 'unpack', 'repack'] },
+    { id: 'video', label: 'Video', icon: '🎬', bg: 'linear-gradient(135deg, #1a2a3a, #0f1a24)', services: ['pack', 'slim', 'upscale', 'unpack', 'repack'] },
+    { id: 'files', label: 'Files', icon: '📁', bg: 'linear-gradient(135deg, #1a2a1a, #0f1a0f)', services: ['pack', 'slim', 'unpack', 'repack'] },
     { id: 'pictures', label: 'Pictures', icon: '🖼️', bg: 'linear-gradient(135deg, #2a1a2a, #1a0f1a)', services: ['pack', 'upscale', 'unpack', 'repack'] },
   ]
 
@@ -31,17 +31,24 @@
     unpack: { label: 'Unpack', icon: '📂', desc: 'Extract an existing archive' },
     repack: { label: 'Repack', icon: '🔄', desc: 'Update an archive with new data' },
     upscale: { label: 'Upscale', icon: '🔍', desc: 'AI upscale to higher resolution' },
+    slim: { label: 'Slim', icon: '✂️', desc: 'FitGirl-style media re-encode' },
   }
 
   const packModels: Model[] = [
-    { id: 'quick', name: 'Quick (Zstd)', description: 'Fast compression using Zstandard. Good balance of speed and compression ratio. Ideal for everyday use and frequently accessed archives.', timeEstimate: 'Seconds to minutes', savingsPercent: '20-35%', savingsInfo: '~2.5 GB saved per 10 GB' },
-    { id: 'deep', name: 'Deep (Maximum)', description: 'Maximum compression using deflate + bsdiff + lepton pipeline. Designed for archival and long-term storage where every byte counts.', timeEstimate: 'Minutes to hours', savingsPercent: '35-55%', savingsInfo: '~4.5 GB saved per 10 GB' },
+    { id: 'quick', name: 'Quick (Zstd)', description: 'Fast compression using Zstandard (tar + zstd -3). Good balance of speed and compression ratio. Ideal for everyday use and frequently accessed archives.', timeEstimate: 'Seconds to minutes', savingsPercent: '0-30%', savingsInfo: 'Fastest option' },
+    { id: 'deep', name: 'Deep (DwarFS)', description: 'Maximum compression using DwarFS block compression with deduplication. Designed for archival and long-term storage where every byte counts.', timeEstimate: 'Minutes to hours', savingsPercent: '0-40%', savingsInfo: 'Best compression' },
   ]
 
   const upscaleModels: Model[] = [
     { id: '720p-1080p', name: 'Real-ESRGAN 720p → 1080p', description: 'AI model optimized for upscaling 720p sources. Produces sharp 1080p output with enhanced detail and reduced artifacts.', timeEstimate: 'Slow (1-5 min/min)', savingsPercent: '—', savingsInfo: '2.25x output' },
     { id: '1080p-4K', name: 'Real-ESRGAN 1080p → 4K', description: 'High-quality AI upscaling from 1080p to 4K. Best for large displays and professional use. Requires a powerful GPU.', timeEstimate: 'Very slow (5-20 min/min)', savingsPercent: '—', savingsInfo: '2x output' },
     { id: 'anime4k', name: 'Anime4K (Anime)', description: 'Purpose-built for anime and digital illustration. Fastest engine with near-real-time speeds and minimal quality loss.', timeEstimate: 'Fast', savingsPercent: '—', savingsInfo: 'Up to 3x output' },
+  ]
+
+  const slimModels: Model[] = [
+    { id: 'balance', name: 'Slim · Balanced', description: 'Re-encode audio → Opus 128k and video → HEVC CRF 28. Best quality/size trade-off, only replaces files that shrink.', timeEstimate: 'Minutes to hours', savingsPercent: '10-60% media', savingsInfo: 'Recommended' },
+    { id: 'speed', name: 'Slim · Fast', description: 'Opus 96k, HEVC CRF 30 on a fast preset. Quickest run, more aggressive lossy encoding.', timeEstimate: 'Minutes', savingsPercent: '15-65% media', savingsInfo: 'Quickest' },
+    { id: 'max', name: 'Slim · Max saving', description: 'Opus 80k, HEVC CRF 32 on a slow preset. Smallest possible archive, noticeably lossy, slowest to build.', timeEstimate: 'Hours', savingsPercent: '20-70% media', savingsInfo: 'Smallest' },
   ]
 
   const unpackModel: Model = {
@@ -51,6 +58,7 @@
 
   function getModels(svc: Service): Model[] {
     if (svc === 'pack' || svc === 'repack') return packModels
+    if (svc === 'slim') return slimModels
     if (svc === 'upscale') return upscaleModels
     return [unpackModel]
   }
@@ -70,10 +78,15 @@
   function selectContent(id: ContentType) { contentType = id; step = 'service' }
   function selectService(svc: Service) { selectedService = svc; step = 'model' }
   function selectModel(model: Model) {
+    const isPack = selectedService === 'pack' || selectedService === 'repack'
     dispatch('navigate', {
       service: selectedService,
-      mode: model.id === 'deep' ? 'deep' : 'quick',
-      preset: selectedService === 'upscale' ? presetForModel[model.id] : model.id === 'deep' ? 'deep' : 'quick',
+      mode: isPack ? (model.id === 'deep' ? 'deep' : 'quick') : undefined,
+      preset: selectedService === 'upscale'
+        ? presetForModel[model.id]
+        : selectedService === 'slim'
+          ? model.id
+          : model.id === 'deep' ? 'deep' : 'quick',
       engine: selectedService === 'upscale' ? engineForModel[model.id] : undefined,
     })
   }

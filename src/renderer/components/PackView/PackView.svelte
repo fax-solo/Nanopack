@@ -10,6 +10,7 @@
   let estimating = $state(false)
   let packing = $state(false)
   let estimate: { quickSize: number; deepSize: number; quickTime: number; deepTime: number; fileCount: number; totalSize: number } | null = $state(null)
+  let estProgress = $state({ stage: '', percent: 0, processed: 0, total: 0 })
   let result: { success: boolean; cancelled?: boolean; path?: string; originalSize?: number; finalSize?: number; filesProcessed?: number; message?: string } | null = $state(null)
   let progress = $state({ stage: '', percent: 0, processed: 0, total: 0 })
   let logs: { text: string; type: 'info' | 'done' | 'error' }[] = $state([])
@@ -25,8 +26,18 @@
   async function runEstimate() {
     if (!sourcePath) return
     estimating = true
-    estimate = await window.nanopack.estimate(sourcePath)
-    estimating = false
+    estimate = null
+    estProgress = { stage: 'Starting…', percent: 0, processed: 0, total: 0 }
+    const unsub = window.nanopack.onProgress((data) => { estProgress = data })
+    try {
+      estimate = await window.nanopack.estimate(sourcePath)
+    } finally {
+      unsub()
+      estimating = false
+    }
+  }
+  async function cancelEstimate() {
+    await window.nanopack.cancelOperation()
   }
   async function runPack() {
     if (!sourcePath) return
@@ -79,8 +90,23 @@
   {#if sourcePath && !estimate && !result}
     <div class="action-bar">
       <button class="btn btn-secondary" onclick={runEstimate} disabled={estimating}>
-        {estimating ? 'Estimating...' : '📊 Estimate size'}
+        {estimating ? 'Estimating…' : '📊 Estimate size'}
       </button>
+    </div>
+  {/if}
+
+  {#if estimating}
+    <div class="est-status">
+      <div class="est-status-top">
+        <span class="est-spinner" aria-hidden="true"></span>
+        <span class="est-stage">{estProgress.stage || 'Preparing estimate…'}</span>
+        <span class="est-pct">{Math.round(estProgress.percent)}%</span>
+      </div>
+      <div class="est-bar"><div class="est-bar-fill" style="width: {estProgress.percent}%"></div></div>
+      <div class="est-status-note">Scans your folder and compresses a small sample on-the-fly. This runs in the background — the app stays responsive, so you can cancel anytime.</div>
+      <div class="action-bar">
+        <button class="btn btn-danger" onclick={cancelEstimate}>Cancel</button>
+      </div>
     </div>
   {/if}
 
@@ -162,6 +188,15 @@
   .path-row-text { flex: 1; font-size: 13px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .path-row-btn { font-size: 11px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
   .action-bar { display: flex; gap: 10px; }
+  .est-status { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; }
+  .est-status-top { display: flex; align-items: center; gap: 10px; }
+  .est-spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: est-spin 0.8s linear infinite; flex-shrink: 0; }
+  .est-stage { flex: 1; font-size: 13px; color: var(--text); }
+  .est-pct { font-size: 12px; font-family: var(--font-mono); color: var(--accent); flex-shrink: 0; }
+  .est-bar { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+  .est-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: 3px; transition: width 0.3s ease; }
+  .est-status-note { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+  @keyframes est-spin { to { transform: rotate(360deg); } }
   .estimate-section { display: flex; flex-direction: column; gap: 12px; }
   .estimate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .est-card { background: var(--bg); border-radius: var(--radius-md); padding: 16px; border: 1px solid var(--border); }

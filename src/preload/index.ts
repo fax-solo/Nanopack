@@ -20,6 +20,30 @@ export interface EstimateResult {
   totalSize: number
 }
 
+export type SlimPresetId = 'speed' | 'balance' | 'max'
+
+export interface SlimToolchainStatus {
+  available: boolean
+  source: 'bundled' | 'system' | 'missing'
+  version?: string
+  which?: string
+}
+
+export interface SlimResult {
+  success: boolean
+  cancelled?: boolean
+  message?: string
+  path?: string
+  originalSize: number
+  finalSize: number
+  filesProcessed: number
+  audioReencoded: number
+  videoReencoded: number
+  mediaBefore: number
+  mediaAfter: number
+  encodedKeepFailed: number
+}
+
 export interface ProgressData {
   stage: string
   percent: number
@@ -94,8 +118,11 @@ const api = {
   verify: (npkPath: string): Promise<NpkResult> => ipcRenderer.invoke('verify', npkPath),
   repack: (npkPath: string, sourceDir: string, outputPath: string, mode: 'quick' | 'deep'): Promise<NpkResult> =>
     ipcRenderer.invoke('repack', npkPath, sourceDir, outputPath, mode),
-  estimate: (inputPath: string): Promise<EstimateResult> =>
+  estimate: (inputPath: string): Promise<EstimateResult | null> =>
     ipcRenderer.invoke('estimate', inputPath),
+  slim: (inputPath: string, outputPath: string, mode: 'quick' | 'deep', preset: SlimPresetId): Promise<SlimResult> =>
+    ipcRenderer.invoke('slim', inputPath, outputPath, mode, preset),
+  slimToolchain: (): Promise<SlimToolchainStatus> => ipcRenderer.invoke('slim:toolchain'),
   upscale: (inputPath: string, outputPath: string, engine: string, preset: string): Promise<NpkResult> =>
     ipcRenderer.invoke('upscale', inputPath, outputPath, engine, preset),
   detectGpu: (): Promise<GpuInfo | null> => ipcRenderer.invoke('detect-gpu'),

@@ -9,6 +9,7 @@ let isQuitting = false
 import path from 'path'
 import { packFiles, estimatePack, unpackArchive, mountArchive, verifyArchive } from './services/pack-service'
 import { repackArchive } from './services/repack-service'
+import { slimPack, checkSlimToolchain, type SlimPresetId } from './services/slim-service'
 import { upscaleVideo, detectGpu } from './services/upscale-service'
 import { startDownload, cancelDownload, setProgressCallback, getDownloads } from './services/download-service'
 import { modelExists, getModelDownloadInfo } from './utils/model-download'
@@ -228,8 +229,15 @@ ipcMain.handle('pack', async (_event, inputPath: string, outputPath: string, mod
 })
 
 ipcMain.handle('estimate', async (_event, inputPath: string) => {
-  try { return await estimatePack(inputPath, (stage, percent) => { sendProgress(stage, percent) }, storeGet('maxThreads')) }
-  catch { return { quickSize: 0, deepSize: 0, quickTime: 0, deepTime: 0, fileCount: 0, totalSize: 0 } }
+  const signal = beginOperation()
+  try {
+    return await estimatePack(inputPath, (stage, percent) => { sendProgress(stage, percent) }, storeGet('maxThreads'), signal)
+  } catch (e: any) {
+    if (signal.aborted || e?.name === 'CancelError') return null
+    return { quickSize: 0, deepSize: 0, quickTime: 0, deepTime: 0, fileCount: 0, totalSize: 0 }
+  } finally {
+    endOperation()
+  }
 })
 
 ipcMain.handle('unpack', async (_event, npkPath: string, outputDir: string) => {
@@ -295,6 +303,24 @@ ipcMain.handle('repack', async (_event, npkPath: string, sourceDir: string, outp
   } catch (e: any) {
     if (signal.aborted) return { success: false, cancelled: true, message: 'Cancelled' }
     return { success: false, message: e.message }
+  } finally {
+    endOperation()
+  }
+})
+
+ipcMain.handle('slim:toolchain', async () => checkSlimToolchain())
+
+ipcMain.handle('slim', async (_event, inputPath: string, outputPath: string, mode: 'quick' | 'deep', preset: SlimPresetId) => {
+  const signal = beginOperation()
+  try {
+    const threads = storeGet('maxThreads')
+    const result = await slimPack(inputPath, outputPath, mode, preset, (stage, percent, file) => {
+      sendProgress(stage, percent, Math.round(percent), 100, file)
+    }, threads, signal)
+    return result
+  } catch (e: any) {
+    if (signal.aborted || e?.name === 'CancelError') return { success: false, cancelled: true, originalSize: 0, finalSize: 0, filesProcessed: 0, audioReencoded: 0, videoReencoded: 0, mediaBefore: 0, mediaAfter: 0, encodedKeepFailed: 0, message: 'Cancelled' }
+    return { success: false, message: e.message, originalSize: 0, finalSize: 0, filesProcessed: 0, audioReencoded: 0, videoReencoded: 0, mediaBefore: 0, mediaAfter: 0, encodedKeepFailed: 0 }
   } finally {
     endOperation()
   }
